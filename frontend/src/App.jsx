@@ -5,6 +5,7 @@ import BloomChart from './components/BloomChart.jsx';
 import CorrelationChart from './components/CorrelationChart.jsx';
 import DataTable from './components/DataTable.jsx';
 import PlotGallery from './components/PlotGallery.jsx';
+import PredictionPanel from './components/PredictionPanel.jsx';
 import { requestPlot, triggerAnalysis, useApiData } from './hooks/useApi.js';
 
 const plotOptions = [
@@ -20,6 +21,7 @@ export default function App() {
   const { data: timeseries, loading: loadingTs, refetch: refetchTs } = useApiData('/timeseries');
   const { data: bloom, loading: loadingBloom, refetch: refetchBloom } = useApiData('/analysis/bloom');
   const { data: correlation, loading: loadingCorr, refetch: refetchCorr } = useApiData('/analysis/correlation');
+  const { data: predictions, loading: loadingPredictions, refetch: refetchPredictions } = useApiData('/predictions/bloom');
   const { data: menuOptions, loading: loadingMenu, error: menuError } = useApiData('/menu');
   const { data: plots, loading: loadingPlots, refetch: refetchPlots } = useApiData('/plots');
 
@@ -139,6 +141,11 @@ export default function App() {
           <h2>Series NDVI &amp; precipitación</h2>
           {loadingTs ? <p className="status">Cargando serie temporal…</p> : <BloomChart timeseries={timeseries} />}
           <button onClick={refetchTs} style={{ marginTop: '1rem' }}>Actualizar serie</button>
+        </section>
+
+        <section className="card" style={{ gridColumn: '1 / -1' }}>
+          <h2>Predicción de floraciones próximas</h2>
+          <PredictionPanel data={predictions} loading={loadingPredictions} onRefresh={refetchPredictions} />
         </section>
 
         <section className="card" style={{ gridColumn: '1 / -1' }}>

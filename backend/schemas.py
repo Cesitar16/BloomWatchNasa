@@ -127,3 +127,55 @@ class PlotItem(BaseModel):
         None,
         description="Año asociado al gráfico cuando aplica.",
     )
+
+
+class PredictionMetrics(BaseModel):
+    """Training metrics reported by the bloom prediction model."""
+
+    accuracy: Optional[float] = Field(
+        None, ge=0, le=1, description="Exactitud en los datos de entrenamiento."
+    )
+    roc_auc: Optional[float] = Field(
+        None, ge=0, le=1, description="Área bajo la curva ROC en entrenamiento."
+    )
+    positive_rate: Optional[float] = Field(
+        None, ge=0, le=1, description="Proporción de meses en floración en el conjunto de entrenamiento."
+    )
+
+
+class BloomPredictionPoint(BaseModel):
+    """Probability estimate for a specific month."""
+
+    date: str
+    probability: float = Field(..., ge=0, le=1)
+    predicted: bool
+    status: Literal["historical", "forecast"]
+    ndvi: Optional[float] = Field(None, description="NDVI mensual utilizado para la predicción.")
+    precipitation_mm: Optional[float] = Field(None, description="Precipitación mensual acumulada.")
+    lst_c: Optional[float] = Field(None, description="Temperatura superficial promedio (°C).")
+    soil_moisture: Optional[float] = Field(
+        None, description="Contenido de humedad del suelo (fracción)."
+    )
+    sentinel_ndvi: Optional[float] = Field(
+        None, description="NDVI derivado de Sentinel-2 cuando está disponible."
+    )
+    label: Optional[int] = Field(
+        None,
+        ge=0,
+        le=1,
+        description="Etiqueta histórica (1 si floración, 0 si no, None cuando no existe).",
+    )
+
+
+class BloomPredictionResponse(BaseModel):
+    """Complete payload returned by the bloom prediction endpoint."""
+
+    model: str
+    feature_columns: List[str]
+    threshold: float = Field(..., ge=0, le=1)
+    training_samples: int
+    training_range: Optional[dict] = Field(
+        None, description="Rango temporal utilizado para entrenar el modelo."
+    )
+    metrics: PredictionMetrics
+    predictions: List[BloomPredictionPoint]

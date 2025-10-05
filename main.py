@@ -14,6 +14,7 @@ Menú interactivo:
 import os
 import sys
 import traceback
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from src.gee_auth import initialize_gee
@@ -26,6 +27,7 @@ from src.visualization import (
     plot_ndvi_year,
 )
 from src.dataset_inspector import inspect_all
+from src.prediction_model import train_bloom_predictor
 
 _INITIALIZED = False
 
@@ -156,6 +158,25 @@ def build_master_table(include_s2: bool = True) -> Optional[Dict[str, Any]]:
         return {"error": str(exc)}
 
 
+def generate_bloom_predictions(probability_threshold: float = 0.5) -> Dict[str, Any]:
+    """Entrena el modelo de predicción y guarda las probabilidades por mes."""
+
+    result = train_bloom_predictor(probability_threshold=probability_threshold)
+    table = result.table.copy()
+    table["date"] = table["date"].dt.strftime("%Y-%m-%d")
+
+    output_path = Path("data/processed/bloom_predictions.csv")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    table.to_csv(output_path, index=False)
+
+    metadata = result.metadata.copy()
+    metadata["predictions_path"] = str(output_path)
+    metadata["records"] = int(len(table))
+    metadata["forecast_records"] = int(len(result.forecast_rows))
+
+    return metadata
+
+
 MENU_METADATA: Dict[str, Dict[str, Any]] = {
     "1": {
         "label": "Extraer datos satelitales",
@@ -212,6 +233,17 @@ MENU_METADATA: Dict[str, Dict[str, Any]] = {
             {"name": "include_s2", "required": False, "description": "Incluir Sentinel-2 en la tabla."},
         ],
     },
+    "8": {
+        "label": "Predecir próximas floraciones",
+        "description": "Entrena un modelo logístico usando la tabla maestra y guarda probabilidades mensuales en data/processed/bloom_predictions.csv.",
+        "parameters": [
+            {
+                "name": "probability_threshold",
+                "required": False,
+                "description": "Umbral (0-1) para clasificar un mes como floración.",
+            }
+        ],
+    },
 }
 
 
@@ -263,6 +295,10 @@ def execute_menu_option(option: str, **kwargs) -> Any:
         )
     if option == "7":
         return build_master_table(include_s2=kwargs.get("include_s2", True))
+    if option == "8":
+        return generate_bloom_predictions(
+            probability_threshold=kwargs.get("probability_threshold", 0.5)
+        )
 
     raise ValueError(f"Opción de menú desconocida: {option}")
 
@@ -352,6 +388,42 @@ def run_all():
     generate_plot("ndvi_trend", results_csv=g_csv)
     generate_plot("ndvi_trend", results_csv=a_csv)
 
+
+def menu_predict():
+    print("\n=== Predicción de floración ===")
+    default_threshold = 0.5
+    raw = _input(
+        f"👉 Umbral de probabilidad (0-1, Enter para {default_threshold}): "
+    ).strip()
+    try:
+        threshold = float(raw) if raw else default_threshold
+    except ValueError:
+        print("⚠️ Umbral inválido, usando valor por defecto 0.5.")
+        threshold = default_threshold
+
+    try:
+        metadata = generate_bloom_predictions(probability_threshold=threshold)
+    except Exception as exc:  # pragma: no cover - CLI feedback
+        print(f"⚠️ No fue posible entrenar el modelo: {exc}")
+        return
+
+    path = metadata.get("predictions_path")
+    metrics = metadata.get("metrics", {})
+    print("\n✅ Predicciones guardadas en:", path)
+    print(
+        f"   Registros totales: {metadata.get('records')} | Próximos meses estimados: {metadata.get('forecast_records')}"
+    )
+    print(
+        f"   Modelo: {metadata.get('model')} (muestras entrenamiento: {metadata.get('training_samples')})"
+    )
+    accuracy = metrics.get("accuracy")
+    roc_auc = metrics.get("roc_auc")
+    if accuracy is not None:
+        print(f"   Exactitud (train): {accuracy:.2%}")
+    if roc_auc is not None:
+        print(f"   ROC-AUC (train): {roc_auc:.3f}")
+
+
 def main():
     print("=" * 60)
     print("🌎 BLOOMWATCH - NASA HACKATHON | ANÁLISIS DE FLORACIÓN 2015–2025")
@@ -368,6 +440,7 @@ def main():
             print("5) Inspeccionar datasets disponibles")
             print("6) Correlación lluvia→NDVI (lags 0/+1/+2)")
             print("7) Construir TABLA MAESTRA mensual (NDVI, precip, LST, SMAP, S2)")
+            print("8) Predecir próximas floraciones")
             print("0) Salir\n")
 
             opt = _input("👉 Elige una opción: ").strip()
@@ -396,6 +469,8 @@ def main():
                         print(f"⚠️ Error construyendo tabla maestra: {result.get('error') if result else 'desconocido'}")
                 except Exception as e:
                     print(f"⚠️ Error construyendo tabla maestra: {e}")
+            elif opt == "8":
+                menu_predict()
             elif opt == "0":
                 break
             else:

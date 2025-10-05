@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from src import data_collector
+from src.prediction_model import train_bloom_predictor
 
 from main import ensure_initialized, execute_menu_option, get_menu_options
 
@@ -18,10 +19,13 @@ from .schemas import (
     AOIGeometry,
     ApiError,
     BloomAnalysisRequest,
+    BloomPredictionPoint,
+    BloomPredictionResponse,
     BloomSummary,
     CorrelationRequest,
     DatasetListItem,
     MenuOption,
+    PredictionMetrics,
     PlotItem,
     PlotRequest,
     RainNdviCorrelation,
@@ -350,6 +354,80 @@ def run_correlation(request: CorrelationRequest):
         )
         for _, row in df.iterrows()
     ]
+
+
+@app.get(
+    "/predictions/bloom",
+    response_model=BloomPredictionResponse,
+    responses={404: {"model": ApiError}, 400: {"model": ApiError}},
+)
+def get_bloom_predictions() -> BloomPredictionResponse:
+    """Run the bloom predictor and return upcoming bloom probabilities."""
+
+    try:
+        result = train_bloom_predictor()
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover - runtime guard
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    df = result.table.copy()
+    if "date" not in df.columns:
+        raise HTTPException(status_code=500, detail="El resultado de predicciones no tiene columna 'date'.")
+
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df = df.dropna(subset=["date"]).sort_values("date")
+
+    forecast = df[df.get("status") == "forecast"].copy()
+    if forecast.empty:
+        forecast = df.tail(6).copy()
+    forecast = forecast.sort_values("date")
+    forecast = forecast.head(12)
+
+    def _optional_float(value):
+        return float(value) if pd.notna(value) else None
+
+    predictions: List[BloomPredictionPoint] = []
+    for _, row in forecast.iterrows():
+        probability = float(row.get("probability", 0.0))
+        probability = min(max(probability, 0.0), 1.0)
+        predicted_label = bool(row.get("predicted_label", probability >= result.metadata.get("threshold", 0.5)))
+        status = row.get("status", "forecast")
+        label_value = row.get("is_bloom")
+        label = int(label_value) if pd.notna(label_value) else None
+        predictions.append(
+            BloomPredictionPoint(
+                date=row["date"].strftime("%Y-%m-%d"),
+                probability=probability,
+                predicted=predicted_label,
+                status=status,
+                ndvi=_optional_float(row.get("NDVI")),
+                precipitation_mm=_optional_float(row.get("precip_mm")),
+                lst_c=_optional_float(row.get("LST_C")),
+                soil_moisture=_optional_float(row.get("soil_moisture")),
+                sentinel_ndvi=_optional_float(row.get("s2_ndvi")),
+                label=label,
+            )
+        )
+
+    metrics_dict = result.metadata.get("metrics", {})
+    metrics = PredictionMetrics(
+        accuracy=_optional_float(metrics_dict.get("accuracy")),
+        roc_auc=_optional_float(metrics_dict.get("roc_auc")),
+        positive_rate=_optional_float(result.metadata.get("positive_rate")),
+    )
+
+    return BloomPredictionResponse(
+        model=str(result.metadata.get("model", "unknown")),
+        feature_columns=list(result.metadata.get("feature_columns", [])),
+        threshold=float(result.metadata.get("threshold", 0.5)),
+        training_samples=int(result.metadata.get("training_samples", 0)),
+        training_range=result.metadata.get("training_range"),
+        metrics=metrics,
+        predictions=predictions,
+    )
 
 
 @app.get("/analysis/correlation", response_model=List[RainNdviCorrelation])

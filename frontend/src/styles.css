@@ -296,3 +296,41 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 }
+
+.prediction-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.prediction-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  background: rgba(37, 99, 235, 0.08);
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
+.prediction-stat {
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+}
+
+.prediction-stat .label {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(15, 23, 42, 0.6);
+  margin-bottom: 0.2rem;
+}
+
+.prediction-stat strong {
+  font-size: 1.05rem;
+}
+
+.prediction-actions {
+  display: flex;
+  justify-content: flex-end;
+}
