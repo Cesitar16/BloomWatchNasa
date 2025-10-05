@@ -95,3 +95,35 @@ class MenuOption(BaseModel):
     label: str
     description: str
     parameters: List[MenuParameter] = Field(default_factory=list)
+
+
+class PlotRequest(BaseModel):
+    """Parameters required to reproduce plots from src/visualization.py."""
+
+    plot: Literal["ndvi_trend", "ndvi_year", "features_overview", "ndvi_rain_year"]
+    year: Optional[int] = Field(
+        None,
+        ge=2000,
+        le=2100,
+        description="Año objetivo para gráficos anuales.",
+    )
+    results_csv: Optional[str] = Field(
+        None,
+        description="Ruta opcional a un CSV de resultados de floración ya calculado.",
+    )
+
+
+class PlotItem(BaseModel):
+    """Metadata about a generated plot stored in data/results."""
+
+    name: str
+    plot_type: Literal["ndvi_trend", "ndvi_year", "features_overview", "ndvi_rain_year"]
+    path: str
+    url: str
+    generated_at: Optional[str] = Field(
+        None, description="Marca de tiempo ISO 8601 de la última modificación."
+    )
+    year: Optional[int] = Field(
+        None,
+        description="Año asociado al gráfico cuando aplica.",
+    )

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
+export const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 
 export function useApiData(endpoint, { immediate = true, params } = {}) {
   const [data, setData] = useState(null);
@@ -32,5 +32,10 @@ export function useApiData(endpoint, { immediate = true, params } = {}) {
 
 export async function triggerAnalysis(path, payload) {
   const response = await axios.post(`${API_BASE_URL}${path}`, payload);
+  return response.data;
+}
+
+export async function requestPlot(payload) {
+  const response = await axios.post(`${API_BASE_URL}/plots`, payload);
   return response.data;
 }

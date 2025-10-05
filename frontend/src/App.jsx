@@ -4,7 +4,15 @@ import SummaryCards from './components/SummaryCards.jsx';
 import BloomChart from './components/BloomChart.jsx';
 import CorrelationChart from './components/CorrelationChart.jsx';
 import DataTable from './components/DataTable.jsx';
-import { triggerAnalysis, useApiData } from './hooks/useApi.js';
+import PlotGallery from './components/PlotGallery.jsx';
+import { requestPlot, triggerAnalysis, useApiData } from './hooks/useApi.js';
+
+const plotOptions = [
+  { value: 'ndvi_trend', label: 'Tendencia NDVI con floración' },
+  { value: 'ndvi_year', label: 'NDVI de un año específico' },
+  { value: 'features_overview', label: 'Serie multivariable 2015-2025' },
+  { value: 'ndvi_rain_year', label: 'NDVI vs lluvia por año' }
+];
 
 export default function App() {
   const { data: aoi } = useApiData('/aoi');
@@ -13,9 +21,14 @@ export default function App() {
   const { data: bloom, loading: loadingBloom, refetch: refetchBloom } = useApiData('/analysis/bloom');
   const { data: correlation, loading: loadingCorr, refetch: refetchCorr } = useApiData('/analysis/correlation');
   const { data: menuOptions, loading: loadingMenu, error: menuError } = useApiData('/menu');
+  const { data: plots, loading: loadingPlots, refetch: refetchPlots } = useApiData('/plots');
 
   const [runningBloom, setRunningBloom] = useState(false);
   const [runningCorr, setRunningCorr] = useState(false);
+  const [runningPlot, setRunningPlot] = useState(false);
+  const [plotType, setPlotType] = useState(plotOptions[0].value);
+  const currentYear = new Date().getFullYear();
+  const [plotYear, setPlotYear] = useState(String(currentYear));
   const [error, setError] = useState(null);
 
   const datasetRows = useMemo(() => {
@@ -28,6 +41,15 @@ export default function App() {
   }, [datasets]);
 
   const menuErrorMessage = menuError?.response?.data?.detail ?? menuError?.message;
+  const requiresYear = plotType === 'ndvi_year' || plotType === 'ndvi_rain_year';
+
+  const handlePlotTypeChange = (event) => {
+    setPlotType(event.target.value);
+  };
+
+  const handlePlotYearChange = (event) => {
+    setPlotYear(event.target.value);
+  };
 
   const handleBloom = async (mode) => {
     try {
@@ -54,6 +76,28 @@ export default function App() {
       setError(err.response?.data?.detail ?? err.message);
     } finally {
       setRunningCorr(false);
+    }
+  };
+
+  const handleGeneratePlot = async (event) => {
+    event.preventDefault();
+    try {
+      setError(null);
+      setRunningPlot(true);
+      const payload = { plot: plotType };
+      if (requiresYear) {
+        const numericYear = Number(plotYear);
+        if (!numericYear || Number.isNaN(numericYear)) {
+          throw new Error('Debes indicar un año válido.');
+        }
+        payload.year = numericYear;
+      }
+      await requestPlot(payload);
+      refetchPlots();
+    } catch (err) {
+      setError(err.response?.data?.detail ?? err.message);
+    } finally {
+      setRunningPlot(false);
     }
   };
 
@@ -95,6 +139,47 @@ export default function App() {
           <h2>Series NDVI &amp; precipitación</h2>
           {loadingTs ? <p className="status">Cargando serie temporal…</p> : <BloomChart timeseries={timeseries} />}
           <button onClick={refetchTs} style={{ marginTop: '1rem' }}>Actualizar serie</button>
+        </section>
+
+        <section className="card" style={{ gridColumn: '1 / -1' }}>
+          <h2>Gráficos generados desde src/visualization.py</h2>
+          <form className="plot-controls" onSubmit={handleGeneratePlot}>
+            <label>
+              Tipo de gráfico
+              <select value={plotType} onChange={handlePlotTypeChange}>
+                {plotOptions.map((option) => (
+                  <option value={option.value} key={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {requiresYear ? (
+              <label>
+                Año
+                <input
+                  type="number"
+                  min="2000"
+                  max="2100"
+                  value={plotYear}
+                  onChange={handlePlotYearChange}
+                />
+              </label>
+            ) : null}
+            <div className="plot-actions">
+              <button type="submit" disabled={runningPlot}>
+                {runningPlot ? 'Generando…' : 'Generar gráfico'}
+              </button>
+              <button type="button" onClick={refetchPlots} disabled={loadingPlots}>
+                {loadingPlots ? 'Actualizando…' : 'Actualizar listado'}
+              </button>
+            </div>
+          </form>
+          {loadingPlots ? (
+            <p className="status">Revisando gráficos disponibles…</p>
+          ) : (
+            <PlotGallery plots={plots} />
+          )}
         </section>
 
         <section className="card" style={{ gridColumn: '1 / -1' }}>
