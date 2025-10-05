@@ -199,11 +199,19 @@ def get_timeseries() -> List[TimeSeriesPoint]:
 
     points: List[TimeSeriesPoint] = []
     for _, row in table.iterrows():
+        ndvi_value = row.get("NDVI")
+        precip_value = row.get("precip_mm")
+
+        if pd.isna(ndvi_value):
+            ndvi_value = None
+        if pd.isna(precip_value):
+            precip_value = None
+
         points.append(
             TimeSeriesPoint(
                 date=row["date"].strftime("%Y-%m-%d"),
-                ndvi=row.get("NDVI"),
-                precipitation_mm=row.get("precip_mm"),
+                ndvi=ndvi_value,
+                precipitation_mm=precip_value,
             )
         )
     return points
