@@ -73,48 +73,65 @@ def analyze_bloom_season(mode="global"):
         print(f"✅ Resultados guardados en {out_csv}")
     return out_csv
 
-def correlate_rain_ndvi():
+def correlate_rain_ndvi(
+    features_csv: str = "data/processed/features_monthly.csv",
+    out_csv: str = "data/processed/rain_ndvi_correlation.csv",
+    max_lag: int = 2,
+):
     """
-    Correlación precipitación (GPM) → NDVI (MODIS) con lags 0,+1,+2 meses.
-    Usa la tabla maestra si existe; si no, usa los CSV base.
+    Correlación Pearson entre precipitación mensual y NDVI usando la tabla maestra.
+    Calcula lags positivos (lluvia adelantada 0, +1, +2 meses).
+    Guarda un CSV con r y n_pares por cada lag.
     """
-    # Usar features si existe (mejor alineación)
-    features = os.path.join(PROC_DIR, "features_monthly.csv")
-    if os.path.exists(features):
-        df = pd.read_csv(features, parse_dates=["date"])
-        df = df.sort_values("date")
-        ndvi = df["NDVI"].values
-        rain = df["precip_mm"].values
-    else:
-        ndvi_csv = os.path.join(RAW_DIR, "modis_ndvi_monthly.csv")
-        rain_csv = os.path.join(RAW_DIR, "gpm_precip_monthly.csv")
-        if not (os.path.exists(ndvi_csv) and os.path.exists(rain_csv)):
-            raise FileNotFoundError("Faltan CSV de NDVI o GPM. Descárgalos en el menú 1.")
-        nd = pd.read_csv(ndvi_csv, parse_dates=["date"]).sort_values("date")
-        gp = pd.read_csv(rain_csv, parse_dates=["date"]).sort_values("date")
-        df = pd.merge(nd, gp, on="date", how="inner")
-        ndvi = df["NDVI"].values
-        rain = df["precip_mm"].values
+    if not os.path.exists(features_csv):
+        print(f"⚠️ No existe {features_csv}. Construye primero la tabla maestra (menú 7).")
+        return None
 
-    def corr_at_lag(l):
-        if l == 0:
-            a, b = rain, ndvi
+    df = pd.read_csv(features_csv)
+    # Tipos y orden
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df = df.sort_values("date").reset_index(drop=True)
+
+    # Forzar numéricos por si vinieron como string
+    for col in ["NDVI", "precip_mm"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    if "NDVI" not in df.columns or "precip_mm" not in df.columns:
+        print("⚠️ La tabla maestra no tiene columnas 'NDVI' y/o 'precip_mm'.")
+        return None
+
+    # Filtrar al intervalo 2015-01 a 2025-12 por si hay ruido
+    df = df[(df["date"].dt.year >= 2015) & (df["date"].dt.year <= 2025)].copy()
+
+    # Base limpia
+    base = df[["date", "NDVI", "precip_mm"]].dropna(subset=["NDVI", "precip_mm"]).copy()
+
+    rows = []
+    for lag in range(0, max_lag + 1):
+        # Shift positivo: lluvia de meses previos afecta NDVI futuro
+        tmp = base.copy()
+        tmp["precip_lag"] = tmp["precip_mm"].shift(lag)
+
+        # Quitamos filas sin ambos valores
+        tmp = tmp.dropna(subset=["NDVI", "precip_lag"])
+
+        # Si la varianza es ~0 en alguna serie, la correlación no está definida
+        if len(tmp) < 3 or np.isclose(tmp["precip_lag"].std(ddof=1), 0.0) or np.isclose(tmp["NDVI"].std(ddof=1), 0.0):
+            r = np.nan
         else:
-            a, b = rain[:-l], ndvi[l:]
-        if len(a) < 3:
-            return np.nan
-        # correlación de Pearson
-        if np.all(np.isnan(a)) or np.all(np.isnan(b)):
-            return np.nan
-        return np.corrcoef(a, b)[0, 1]
+            r = tmp["precip_lag"].corr(tmp["NDVI"], method="pearson")
 
-    results = []
-    for lag in [0, 1, 2]:
-        r = corr_at_lag(lag)
-        print(f"📊 Correlación lluvia → NDVI (lag {lag}): r = {np.round(r, 3) if pd.notna(r) else 'NaN'}")
-        results.append({"lag_months": lag, "pearson_r": r})
+        rows.append({"lag_months": lag, "r_pearson": r, "n_pairs": int(len(tmp))})
 
-    out = os.path.join(PROC_DIR, "rain_ndvi_correlation.csv")
-    pd.DataFrame(results).to_csv(out, index=False)
-    print(f"✅ Guardado: {out}")
-    return out
+    out_df = pd.DataFrame(rows)
+    os.makedirs(os.path.dirname(out_csv), exist_ok=True)
+    out_df.to_csv(out_csv, index=False)
+
+    # Log bonito
+    for _, row in out_df.iterrows():
+        r_txt = f"{row['r_pearson']:.3f}" if pd.notna(row["r_pearson"]) else "NaN"
+        print(f"📊 Correlación lluvia → NDVI (lag {int(row['lag_months'])}): r = {r_txt} (n={int(row['n_pairs'])})")
+
+    print(f"✅ Guardado: {out_csv}")
+    return out_csv
