@@ -1,26 +1,29 @@
 # src/gee_auth.py
-"""
-gee_auth.py
----------------------------------
-Autenticación e inicialización de Google Earth Engine
-para el proyecto BloomWatch - NASA Space Apps 2025.
-"""
-
+import os
 import ee
-from config.settings import PROJECT_ID
 
+PROJECT_ENV = "GEE_PROJECT"   # puedes setearlo en .env si quieres
+DEFAULT_PROJECT = "bloomwatchinvestigacion2025"
 
-def initialize_gee(project_id: str | None = None) -> None:
+_initialized = False
+
+def initialize_gee(project: str | None = None):
     """
-    Inicializa la conexión con Google Earth Engine usando el PROJECT_ID.
-    Si no hay sesión, intenta autenticación interactiva.
+    Inicializa Earth Engine. Intenta usar el proyecto de entorno (GEE_PROJECT)
+    o el DEFAULT_PROJECT si no se pasa nada explícito.
     """
-    pid = project_id or PROJECT_ID
+    global _initialized
+    if _initialized:
+        return
+
+    proj = project or os.environ.get(PROJECT_ENV, DEFAULT_PROJECT)
     try:
-        ee.Initialize(project=pid)
-        print(f"✅ Earth Engine inicializado correctamente con el proyecto: {pid}")
-    except Exception as e:
-        print("ℹ️ No había sesión activa. Iniciando autenticación interactiva...")
-        ee.Authenticate()
-        ee.Initialize(project=pid)
-        print(f"✅ Earth Engine inicializado correctamente con el proyecto: {pid}")
+        ee.Initialize(project=proj)
+        print(f"✅ Earth Engine inicializado correctamente con el proyecto: {proj}")
+        _initialized = True
+    except ee.EEException as e:
+        # Si falta token, permitir Authenticate en REPL antes de volver a Initialize
+        print("⚠️ No autenticado. Ejecuta en consola Python:\n"
+              ">>> import ee; ee.Authenticate()\n"
+              "y luego reintenta.")
+        raise
