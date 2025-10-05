@@ -1,0 +1,6 @@
+dataset,error
+modis_ndvi,Dictionary.set() missing 1 required positional argument: 'value'
+sentinel2_sr,Dictionary.set() missing 1 required positional argument: 'value'
+modis_lst,Dictionary.set() missing 1 required positional argument: 'value'
+gpm_precip,Dictionary.set() missing 1 required positional argument: 'value'
+smap_soil,Dictionary.set() missing 1 required positional argument: 'value'
