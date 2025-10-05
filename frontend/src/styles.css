@@ -171,6 +171,60 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.menu-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.menu-list li {
+  background: rgba(15, 23, 42, 0.04);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.menu-item-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.menu-key {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  color: #2563eb;
+}
+
+.menu-label {
+  font-size: 1.05rem;
+}
+
+.menu-params {
+  margin: 0.75rem 0 0;
+  padding-left: 1rem;
+  color: #475569;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.menu-params li {
+  list-style: disc;
+}
+
+.menu-params code {
+  background: rgba(37, 99, 235, 0.12);
+  border-radius: 6px;
+  padding: 0.1rem 0.4rem;
+  margin-right: 0.35rem;
+  font-size: 0.85rem;
+}
+
 @media (max-width: 768px) {
   main {
     grid-template-columns: 1fr;

@@ -12,6 +12,7 @@ export default function App() {
   const { data: timeseries, loading: loadingTs, refetch: refetchTs } = useApiData('/timeseries');
   const { data: bloom, loading: loadingBloom, refetch: refetchBloom } = useApiData('/analysis/bloom');
   const { data: correlation, loading: loadingCorr, refetch: refetchCorr } = useApiData('/analysis/correlation');
+  const { data: menuOptions, loading: loadingMenu, error: menuError } = useApiData('/menu');
 
   const [runningBloom, setRunningBloom] = useState(false);
   const [runningCorr, setRunningCorr] = useState(false);
@@ -25,6 +26,8 @@ export default function App() {
       Filas: item.rows ?? '—'
     }));
   }, [datasets]);
+
+  const menuErrorMessage = menuError?.response?.data?.detail ?? menuError?.message;
 
   const handleBloom = async (mode) => {
     try {
@@ -92,6 +95,37 @@ export default function App() {
           <h2>Series NDVI &amp; precipitación</h2>
           {loadingTs ? <p className="status">Cargando serie temporal…</p> : <BloomChart timeseries={timeseries} />}
           <button onClick={refetchTs} style={{ marginTop: '1rem' }}>Actualizar serie</button>
+        </section>
+
+        <section className="card" style={{ gridColumn: '1 / -1' }}>
+          <h2>Opciones del menú CLI reutilizadas</h2>
+          {loadingMenu ? (
+            <p className="status">Consultando menú…</p>
+          ) : menuError ? (
+            <p className="error">No se pudo cargar el menú ({menuErrorMessage}).</p>
+          ) : (
+            <ul className="menu-list">
+              {menuOptions?.map((option) => (
+                <li key={option.key}>
+                  <div className="menu-item-head">
+                    <span className="menu-key">{option.key})</span>
+                    <span className="menu-label">{option.label}</span>
+                  </div>
+                  <p>{option.description}</p>
+                  {option.parameters?.length ? (
+                    <ul className="menu-params">
+                      {option.parameters.map((param) => (
+                        <li key={param.name}>
+                          <code>{param.name}</code>
+                          <span>{param.required ? ' (requerido)' : ' (opcional)'} – {param.description}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
 
         <section className="card">

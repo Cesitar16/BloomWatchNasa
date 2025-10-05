@@ -8,7 +8,9 @@ import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from src import analysis, data_collector
+from src import data_collector
+
+from main import ensure_initialized, execute_menu_option, get_menu_options
 
 from .schemas import (
     AOIGeometry,
@@ -17,6 +19,7 @@ from .schemas import (
     BloomSummary,
     CorrelationRequest,
     DatasetListItem,
+    MenuOption,
     RainNdviCorrelation,
     TimeSeriesPoint,
 )
@@ -34,6 +37,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+def startup_event() -> None:
+    """Ensure the CLI pipeline is initialized once the API boots."""
+
+    try:
+        ensure_initialized()
+    except Exception:
+        # La inicialización puede requerir credenciales interactivas en entornos sin GEE.
+        pass
 
 
 def _rows_in_csv(path: Path) -> int | None:
@@ -65,6 +79,13 @@ def health_check() -> dict:
     """Simple liveliness probe."""
 
     return {"status": "ok"}
+
+
+@app.get("/menu", response_model=List[MenuOption])
+def menu_metadata() -> List[MenuOption]:
+    """Expose the CLI menu so the frontend can mirror available actions."""
+
+    return [MenuOption(**item) for item in get_menu_options()]
 
 
 @app.get("/aoi", response_model=AOIGeometry)
@@ -141,7 +162,7 @@ def run_bloom_analysis(payload: BloomAnalysisRequest):
     """Trigger the bloom season analysis and return the resulting table."""
 
     try:
-        output = analysis.analyze_bloom_season(mode=payload.mode)
+        output = execute_menu_option("2", mode=payload.mode)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
@@ -188,8 +209,8 @@ def run_correlation(request: CorrelationRequest):
     """Recalculate the rain/NDVI correlation table."""
 
     try:
-        output = analysis.correlate_rain_ndvi(
-            features_csv=request.features_csv, max_lag=request.max_lag
+        output = execute_menu_option(
+            "6", features_csv=request.features_csv, max_lag=request.max_lag
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

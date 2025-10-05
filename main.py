@@ -14,12 +14,20 @@ Menú interactivo:
 import os
 import sys
 import traceback
+from typing import Any, Dict, List, Optional
 
 from src.gee_auth import initialize_gee
-from src.data_collector import export_all, DOWNLOAD_FUNCTIONS, build_features_monthly
+from src.data_collector import DOWNLOAD_FUNCTIONS, build_features_monthly
 from src.analysis import analyze_bloom_season, correlate_rain_ndvi
-from src.visualization import plot_ndvi_trends, plot_ndvi_year, plot_features_overview, plot_features_year
+from src.visualization import (
+    plot_features_overview,
+    plot_features_year,
+    plot_ndvi_trends,
+    plot_ndvi_year,
+)
 from src.dataset_inspector import inspect_all
+
+_INITIALIZED = False
 
 def _input(prompt: str) -> str:
     try:
@@ -31,6 +39,232 @@ def _ensure_dirs():
     os.makedirs("data/raw", exist_ok=True)
     os.makedirs("data/processed", exist_ok=True)
     os.makedirs("data/results", exist_ok=True)
+
+
+def ensure_initialized(force: bool = False) -> None:
+    """Inicializa Earth Engine y carpetas solo una vez."""
+
+    global _INITIALIZED
+    if _INITIALIZED and not force:
+        return
+
+    print("\n🔐 Iniciando conexión con Google Earth Engine...")
+    initialize_gee()
+    _ensure_dirs()
+    _INITIALIZED = True
+    print("✅ Conexión lista.\n")
+
+
+def download_datasets(selected_keys: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+    """Ejecuta las rutinas de descarga definidas en el menú (opción 1)."""
+
+    ensure_initialized()
+
+    if not DOWNLOAD_FUNCTIONS:
+        return []
+
+    if selected_keys is None:
+        selected_keys = list(DOWNLOAD_FUNCTIONS.keys())
+
+    results: List[Dict[str, Any]] = []
+    for key in selected_keys:
+        meta = DOWNLOAD_FUNCTIONS.get(key)
+        if meta is None:
+            results.append(
+                {
+                    "key": key,
+                    "label": None,
+                    "status": "error",
+                    "error": "Clave de dataset desconocida.",
+                }
+            )
+            continue
+
+        try:
+            path, n = meta["fn"]()
+            results.append(
+                {
+                    "key": key,
+                    "label": meta.get("label", key),
+                    "status": "ok",
+                    "path": path,
+                    "rows": n,
+                }
+            )
+        except Exception as exc:  # pragma: no cover - logging de CLI
+            results.append(
+                {
+                    "key": key,
+                    "label": meta.get("label", key),
+                    "status": "error",
+                    "error": str(exc),
+                }
+            )
+    return results
+
+
+def run_bloom_analysis(mode: str = "global") -> Optional[str]:
+    """Ejecuta la opción 2 del menú (análisis de floración)."""
+
+    ensure_initialized()
+    return analyze_bloom_season(mode=mode)
+
+
+def generate_plot(
+    plot: str,
+    *,
+    year: Optional[int] = None,
+    results_csv: Optional[str] = None,
+) -> Optional[str]:
+    """Genera los gráficos disponibles en la opción 3 del menú."""
+
+    ensure_initialized()
+
+    if plot == "ndvi_trend":
+        return plot_ndvi_trends(results_csv)
+    if plot == "ndvi_year":
+        if year is None:
+            raise ValueError("Se requiere 'year' para el gráfico NDVI anual.")
+        return plot_ndvi_year(year, results_csv)
+    if plot == "features_overview":
+        return plot_features_overview()
+    if plot == "ndvi_rain_year":
+        if year is None:
+            raise ValueError("Se requiere 'year' para el gráfico NDVI vs lluvia.")
+        return plot_features_year(year)
+
+    raise ValueError(f"Tipo de gráfico desconocido: {plot}")
+
+
+def compute_correlation(
+    *, features_csv: str = "data/processed/features_monthly.csv", max_lag: int = 2
+) -> Optional[str]:
+    """Calcula la correlación lluvia → NDVI (opción 6)."""
+
+    ensure_initialized()
+    return correlate_rain_ndvi(features_csv=features_csv, max_lag=max_lag)
+
+
+def build_master_table(include_s2: bool = True) -> Optional[Dict[str, Any]]:
+    """Construye la tabla maestra mensual (opción 7)."""
+
+    ensure_initialized()
+    try:
+        out, rows = build_features_monthly(include_s2=include_s2)
+        return {"path": out, "rows": rows}
+    except Exception as exc:  # pragma: no cover - logging de CLI
+        return {"error": str(exc)}
+
+
+MENU_METADATA: Dict[str, Dict[str, Any]] = {
+    "1": {
+        "label": "Extraer datos satelitales",
+        "description": "Descarga los conjuntos de datos configurados en src/data_collector.py.",
+        "parameters": [
+            {
+                "name": "selected_keys",
+                "required": False,
+                "description": "Lista de claves de DOWNLOAD_FUNCTIONS (None para todos).",
+            }
+        ],
+    },
+    "2": {
+        "label": "Analizar floración",
+        "description": "Calcula periodos de floración con umbral global o anual.",
+        "parameters": [
+            {
+                "name": "mode",
+                "required": False,
+                "description": "Modo de análisis ('global' o 'annual').",
+            }
+        ],
+    },
+    "3": {
+        "label": "Generar gráficos",
+        "description": "Produce gráficos NDVI y series multivariables almacenados en data/results/.",
+        "parameters": [
+            {"name": "plot", "required": True, "description": "Tipo de gráfico: ndvi_trend, ndvi_year, features_overview o ndvi_rain_year."},
+            {"name": "year", "required": False, "description": "Año requerido para ndvi_year o ndvi_rain_year."},
+        ],
+    },
+    "4": {
+        "label": "Ejecutar todo",
+        "description": "Corre descargas, análisis global y anual y genera gráficos de tendencia.",
+        "parameters": [],
+    },
+    "5": {
+        "label": "Inspeccionar datasets",
+        "description": "Imprime información básica de las colecciones en Earth Engine.",
+        "parameters": [],
+    },
+    "6": {
+        "label": "Correlación lluvia → NDVI",
+        "description": "Genera la tabla de correlación Pearson para distintos lags.",
+        "parameters": [
+            {"name": "max_lag", "required": False, "description": "Número máximo de meses de retardo."},
+            {"name": "features_csv", "required": False, "description": "Ruta a la tabla maestra de características."},
+        ],
+    },
+    "7": {
+        "label": "Construir tabla maestra",
+        "description": "Fusiona NDVI, precipitación, LST, SMAP y Sentinel-2 en data/processed/features_monthly.csv.",
+        "parameters": [
+            {"name": "include_s2", "required": False, "description": "Incluir Sentinel-2 en la tabla."},
+        ],
+    },
+}
+
+
+def get_menu_options() -> List[Dict[str, Any]]:
+    """Devuelve metadatos legibles de las opciones del menú CLI."""
+
+    return [
+        {"key": key, **value}
+        for key, value in sorted(MENU_METADATA.items(), key=lambda item: item[0])
+    ]
+
+
+def execute_menu_option(option: str, **kwargs) -> Any:
+    """Dispara la acción asociada a una opción de menú de forma programática."""
+
+    if option == "1":
+        return download_datasets(kwargs.get("selected_keys"))
+    if option == "2":
+        mode = kwargs.get("mode", "global")
+        return run_bloom_analysis(mode=mode)
+    if option == "3":
+        return generate_plot(
+            kwargs.get("plot"),
+            year=kwargs.get("year"),
+            results_csv=kwargs.get("results_csv"),
+        )
+    if option == "4":
+        ensure_initialized()
+        downloads = download_datasets()
+        global_csv = run_bloom_analysis(mode="global")
+        annual_csv = run_bloom_analysis(mode="annual")
+        trend_global = plot_ndvi_trends(global_csv)
+        trend_annual = plot_ndvi_trends(annual_csv)
+        return {
+            "downloads": downloads,
+            "global_csv": global_csv,
+            "annual_csv": annual_csv,
+            "trend_global": trend_global,
+            "trend_annual": trend_annual,
+        }
+    if option == "5":
+        ensure_initialized()
+        inspect_all()
+        return None
+    if option == "6":
+        return compute_correlation(
+            features_csv=kwargs.get("features_csv", "data/processed/features_monthly.csv"),
+            max_lag=kwargs.get("max_lag", 2),
+        )
+    if option == "7":
+        return build_master_table(include_s2=kwargs.get("include_s2", True))
+
+    raise ValueError(f"Opción de menú desconocida: {option}")
 
 def menu_download():
     if not DOWNLOAD_FUNCTIONS:
@@ -58,14 +292,13 @@ def menu_download():
         return
 
     print("\n🛰️ Descargando y procesando datasets seleccionados...")
-    for k in selected:
-        meta = DOWNLOAD_FUNCTIONS[k]
-        print(f"📦 Procesando {k} – {meta['label']} ...")
-        try:
-            path, n = meta["fn"]()
-            print(f"✅ Exportado: {path} ({n} registros)")
-        except Exception as e:
-            print(f"⚠️ Error procesando {k}: {e}")
+    results = download_datasets(selected)
+    for res in results:
+        label = res.get("label") or res.get("key")
+        if res.get("status") == "ok":
+            print(f"✅ Exportado: {label} → {res.get('path')} ({res.get('rows')} registros)")
+        else:
+            print(f"⚠️ Error procesando {label}: {res.get('error')}")
 
 def menu_analyze():
     print("\n=== Modo de análisis de floración ===")
@@ -73,7 +306,7 @@ def menu_analyze():
     print("2) Anual  (umbral p75 por año)")
     ch = _input("\n👉 Elige (1/2): ").strip()
     mode = "annual" if ch == "2" else "global"
-    out = analyze_bloom_season(mode=mode)
+    out = run_bloom_analysis(mode=mode)
     if out:
         print(f"🧾 Archivo de resultados: {out}")
 
@@ -87,38 +320,37 @@ def menu_plot():
     if ch == "2":
         y = _input("🔢 Año (ej. 2018): ").strip()
         try:
-            year = int(y); plot_ndvi_year(year)
+            year = int(y); generate_plot("ndvi_year", year=year)
         except ValueError:
             print("⚠️ Año inválido.")
     elif ch == "3":
-        plot_features_overview()
+        generate_plot("features_overview")
     elif ch == "4":
         y = _input("🔢 Año (ej. 2018): ").strip()
         try:
-            year = int(y); plot_features_year(year)
+            year = int(y); generate_plot("ndvi_rain_year", year=year)
         except ValueError:
             print("⚠️ Año inválido.")
     else:
-        plot_ndvi_trends()
+        generate_plot("ndvi_trend")
 
 
 def run_all():
     # Descarga todo, analiza GLOBAL y ANUAL y genera ambos gráficos
-    for k, meta in DOWNLOAD_FUNCTIONS.items():
-        print(f"📦 Procesando {k} – {meta['label']} ...")
-        try:
-            path, n = meta["fn"]()
-            print(f"✅ Exportado: {path} ({n} registros)")
-        except Exception as e:
-            print(f"⚠️ Error procesando {k}: {e}")
+    for res in download_datasets():
+        label = res.get("label") or res.get("key")
+        if res.get("status") == "ok":
+            print(f"✅ Exportado: {label} → {res.get('path')} ({res.get('rows')} registros)")
+        else:
+            print(f"⚠️ Error procesando {label}: {res.get('error')}")
 
     # análisis
-    g_csv = analyze_bloom_season(mode="global")
-    a_csv = analyze_bloom_season(mode="annual")
+    g_csv = run_bloom_analysis(mode="global")
+    a_csv = run_bloom_analysis(mode="annual")
 
     # gráficos
-    plot_ndvi_trends(g_csv)
-    plot_ndvi_trends(a_csv)
+    generate_plot("ndvi_trend", results_csv=g_csv)
+    generate_plot("ndvi_trend", results_csv=a_csv)
 
 def main():
     print("=" * 60)
@@ -126,11 +358,7 @@ def main():
     print("=" * 60)
 
     try:
-        print("\n🔐 Iniciando conexión con Google Earth Engine...")
-        initialize_gee()
-        _ensure_dirs()
-        print("✅ Conexión lista.\n")
-
+        ensure_initialized()
         while True:
             print("\n=== MENÚ PRINCIPAL ===")
             print("1) Extraer datos satelitales (selección por satélite)")
@@ -156,13 +384,16 @@ def main():
             elif opt == '6':
                 # NUEVO: calcular correlación lluvia→NDVI
                 try:
-                    correlate_rain_ndvi()  # usa los CSV de modis_ndvi_monthly.csv y gpm_precip_monthly.csv
+                    compute_correlation()  # usa la tabla maestra de características
                 except Exception as e:
                     print(f"⚠️ Error en correlación: {e}")
             elif opt == "7":
                 try:
-                    out, n = build_features_monthly(include_s2=True)
-                    print(f"✅ Tabla maestra creada: {out} ({n} filas)")
+                    result = build_master_table(include_s2=True)
+                    if result and "path" in result:
+                        print(f"✅ Tabla maestra creada: {result['path']} ({result['rows']} filas)")
+                    else:
+                        print(f"⚠️ Error construyendo tabla maestra: {result.get('error') if result else 'desconocido'}")
                 except Exception as e:
                     print(f"⚠️ Error construyendo tabla maestra: {e}")
             elif opt == "0":

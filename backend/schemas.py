@@ -78,3 +78,20 @@ class ApiError(BaseModel):
     """Standardized error payload."""
 
     detail: str
+
+
+class MenuParameter(BaseModel):
+    """Describe a parameter accepted by a CLI menu option."""
+
+    name: str
+    required: bool = False
+    description: Optional[str] = None
+
+
+class MenuOption(BaseModel):
+    """Expose CLI menu options through the API."""
+
+    key: str
+    label: str
+    description: str
+    parameters: List[MenuParameter] = Field(default_factory=list)
