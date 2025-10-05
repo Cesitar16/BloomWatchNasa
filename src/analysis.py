@@ -1,95 +1,120 @@
 # src/analysis.py
-from pathlib import Path
+import os
 import pandas as pd
 import numpy as np
 
-NDVI_CSV = Path("data/raw/modis_ndvi_monthly.csv")
-OUT_DIR  = Path("data/processed")
+RAW_DIR = "data/raw"
+PROC_DIR = "data/processed"
+os.makedirs(PROC_DIR, exist_ok=True)
 
-def _load_ndvi():
-    if not NDVI_CSV.exists():
-        print(f"⚠️ No existe {NDVI_CSV}. Corre primero la descarga.")
-        return None, None
-    df = pd.read_csv(NDVI_CSV)
-    date_col = "date" if "date" in df.columns else ("fecha" if "fecha" in df.columns else None)
-    if date_col is None or "NDVI" not in df.columns:
-        print("⚠️ El CSV NDVI no tiene columnas esperadas ('date'/'fecha' y 'NDVI').")
-        return None, None
-    df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
-    df = df.dropna(subset=[date_col, "NDVI"]).sort_values(date_col).reset_index(drop=True)
-    df.rename(columns={date_col: "date"}, inplace=True)
-    return df, "date"
-
-def analyze_bloom_season(mode: str = "global") -> str | None:
+def _detect_bloom(df, thr):
     """
-    Detecta floración por año según umbral:
-      - mode='global': umbral = p75 de toda la serie.
-      - mode='annual': umbral por cada año = p75 del NDVI de ese año.
-    Genera:
-      data/processed/bloom_periods_global.csv   o
-      data/processed/bloom_periods_annual.csv
+    Devuelve inicio/fin como primeras/últimas fechas con NDVI >= thr
+    (en la serie/segmento entregado).
     """
-    df, date_col = _load_ndvi()
-    if df is None:
-        return None
+    mask = df["NDVI"] >= thr
+    if not mask.any():
+        return None, None
+    on  = df.loc[mask, "date"].min()
+    off = df.loc[mask, "date"].max()
+    return on, off
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+def analyze_bloom_season(mode="global"):
+    """
+    mode: 'global' (umbral p75 en toda la serie)
+          'annual' (umbral p75 por año)
+    Además genera un CSV de sensibilidad (p65,p75,p80) si mode='global'.
+    """
+    ndvi_csv = os.path.join(RAW_DIR, "modis_ndvi_monthly.csv")
+    if not os.path.exists(ndvi_csv):
+        raise FileNotFoundError("Falta data/raw/modis_ndvi_monthly.csv (descarga MODIS NDVI primero)")
 
-    periods = []
+    df = pd.read_csv(ndvi_csv)
+    df["date"] = pd.to_datetime(df["date"])
+    df = df.sort_values("date").dropna(subset=["NDVI"])
+
+    out_csv = None
     if mode == "global":
-        thr_global = float(np.nanpercentile(df["NDVI"], 75))
-        print(f"🌿 Umbral de floración GLOBAL (percentil 75): {thr_global:.3f}")
-        for year, g in df.groupby(df[date_col].dt.year, group_keys=False):
-            g = g[["date", "NDVI"]].dropna().sort_values("date")
-            if g.empty or not (g["NDVI"] >= thr_global).any():
-                periods.append({"year": int(year), "bloom_start": None, "bloom_end": None,
-                                "duration_days": 0, "threshold": thr_global})
-                continue
-            over = g["NDVI"] >= thr_global
-            idx_first = over.idxmax()
-            idx_last  = over[::-1].idxmax()
-            start = g.loc[idx_first, "date"]
-            end   = g.loc[idx_last,  "date"]
-            duration = max(0, int((end - start).days))
-            print(f"🌸 {year}: floración entre {start.date()} y {end.date()} ({duration} días)")
-            periods.append({"year": int(year),
-                            "bloom_start": start.date().isoformat(),
-                            "bloom_end": end.date().isoformat(),
-                            "duration_days": duration,
-                            "threshold": thr_global})
-        out_path = OUT_DIR / "bloom_periods_global.csv"
+        thr = df["NDVI"].quantile(0.75)
+        rows = []
+        for y, g in df.groupby(df["date"].dt.year, group_keys=False):
+            on, off = _detect_bloom(g, thr)
+            if on is not None:
+                duration = (off - on).days
+                print(f"🌸 {y}: floración entre {on.date()} y {off.date()} ({duration} días)")
+                rows.append({"year": y, "bloom_start": on.date(), "bloom_end": off.date(), "duration_days": duration})
+        out_csv = os.path.join(PROC_DIR, "bloom_periods_global.csv")
+        pd.DataFrame(rows).to_csv(out_csv, index=False)
 
-    elif mode == "annual":
-        print("🌿 Umbral de floración ANUAL (percentil 75 por año)")
-        for year, g in df.groupby(df[date_col].dt.year, group_keys=False):
-            g = g[["date", "NDVI"]].dropna().sort_values("date")
-            if g.empty:
-                periods.append({"year": int(year), "bloom_start": None, "bloom_end": None,
-                                "duration_days": 0, "threshold": None})
-                continue
-            thr_y = float(np.nanpercentile(g["NDVI"], 75))
-            over = g["NDVI"] >= thr_y
-            if not over.any():
-                periods.append({"year": int(year), "bloom_start": None, "bloom_end": None,
-                                "duration_days": 0, "threshold": thr_y})
-                continue
-            idx_first = over.idxmax()
-            idx_last  = over[::-1].idxmax()
-            start = g.loc[idx_first, "date"]
-            end   = g.loc[idx_last,  "date"]
-            duration = max(0, int((end - start).days))
-            print(f"🌸 {year}: floración entre {start.date()} y {end.date()} ({duration} días)")
-            periods.append({"year": int(year),
-                            "bloom_start": start.date().isoformat(),
-                            "bloom_end": end.date().isoformat(),
-                            "duration_days": duration,
-                            "threshold": thr_y})
-        out_path = OUT_DIR / "bloom_periods_annual.csv"
+        # Sensibilidad de umbral
+        sens = []
+        for q in [0.65, 0.75, 0.80]:
+            t = df["NDVI"].quantile(q)
+            active = []
+            for y, g in df.groupby(df["date"].dt.year, group_keys=False):
+                on, off = _detect_bloom(g, t)
+                active.append(int(on is not None))
+            sens.append({"quantile": q, "years_with_bloom": sum(active), "years_total": len(active)})
+        pd.DataFrame(sens).to_csv(os.path.join(PROC_DIR, "bloom_threshold_sensitivity.csv"), index=False)
 
+    else:  # annual
+        rows = []
+        for y, g in df.groupby(df["date"].dt.year, group_keys=False):
+            thr = g["NDVI"].quantile(0.75)
+            on, off = _detect_bloom(g, thr)
+            if on is not None:
+                duration = (off - on).days
+                print(f"🌸 {y}: floración entre {on.date()} y {off.date()} ({duration} días)")
+                rows.append({"year": y, "bloom_start": on.date(), "bloom_end": off.date(), "duration_days": duration})
+        out_csv = os.path.join(PROC_DIR, "bloom_periods_annual.csv")
+        pd.DataFrame(rows).to_csv(out_csv, index=False)
+
+    if out_csv:
+        print(f"✅ Resultados guardados en {out_csv}")
+    return out_csv
+
+def correlate_rain_ndvi():
+    """
+    Correlación precipitación (GPM) → NDVI (MODIS) con lags 0,+1,+2 meses.
+    Usa la tabla maestra si existe; si no, usa los CSV base.
+    """
+    # Usar features si existe (mejor alineación)
+    features = os.path.join(PROC_DIR, "features_monthly.csv")
+    if os.path.exists(features):
+        df = pd.read_csv(features, parse_dates=["date"])
+        df = df.sort_values("date")
+        ndvi = df["NDVI"].values
+        rain = df["precip_mm"].values
     else:
-        print("⚠️ Modo no reconocido. Usa 'global' o 'annual'.")
-        return None
+        ndvi_csv = os.path.join(RAW_DIR, "modis_ndvi_monthly.csv")
+        rain_csv = os.path.join(RAW_DIR, "gpm_precip_monthly.csv")
+        if not (os.path.exists(ndvi_csv) and os.path.exists(rain_csv)):
+            raise FileNotFoundError("Faltan CSV de NDVI o GPM. Descárgalos en el menú 1.")
+        nd = pd.read_csv(ndvi_csv, parse_dates=["date"]).sort_values("date")
+        gp = pd.read_csv(rain_csv, parse_dates=["date"]).sort_values("date")
+        df = pd.merge(nd, gp, on="date", how="inner")
+        ndvi = df["NDVI"].values
+        rain = df["precip_mm"].values
 
-    pd.DataFrame(periods, columns=["year","bloom_start","bloom_end","duration_days","threshold"]).to_csv(out_path, index=False)
-    print(f"✅ Resultados guardados en {out_path}")
-    return str(out_path)
+    def corr_at_lag(l):
+        if l == 0:
+            a, b = rain, ndvi
+        else:
+            a, b = rain[:-l], ndvi[l:]
+        if len(a) < 3:
+            return np.nan
+        # correlación de Pearson
+        if np.all(np.isnan(a)) or np.all(np.isnan(b)):
+            return np.nan
+        return np.corrcoef(a, b)[0, 1]
+
+    results = []
+    for lag in [0, 1, 2]:
+        r = corr_at_lag(lag)
+        print(f"📊 Correlación lluvia → NDVI (lag {lag}): r = {np.round(r, 3) if pd.notna(r) else 'NaN'}")
+        results.append({"lag_months": lag, "pearson_r": r})
+
+    out = os.path.join(PROC_DIR, "rain_ndvi_correlation.csv")
+    pd.DataFrame(results).to_csv(out, index=False)
+    print(f"✅ Guardado: {out}")
+    return out
