@@ -16,9 +16,9 @@ import sys
 import traceback
 
 from src.gee_auth import initialize_gee
-from src.data_collector import export_all, DOWNLOAD_FUNCTIONS
+from src.data_collector import export_all, DOWNLOAD_FUNCTIONS, build_features_monthly
 from src.analysis import analyze_bloom_season, correlate_rain_ndvi
-from src.visualization import plot_ndvi_trends, plot_ndvi_year
+from src.visualization import plot_ndvi_trends, plot_ndvi_year, plot_features_overview, plot_features_year
 from src.dataset_inspector import inspect_all
 
 def _input(prompt: str) -> str:
@@ -80,18 +80,27 @@ def menu_analyze():
 def menu_plot():
     print("\n=== Gráficos ===")
     print("1) Tendencia NDVI + franjas de floración (usar último análisis disponible)")
-    print("2) Gráfico de un año específico")
-    ch = _input("\n👉 Elige (1/2): ").strip()
+    print("2) Gráfico NDVI de un año específico")
+    print("3) Serie multiserie (NDVI, LST, SMAP, S2 y precip) 2015–2025")  # NUEVO
+    print("4) Año específico multiserie NDVI + lluvia (doble eje)")       # NUEVO
+    ch = _input("\n👉 Elige (1/2/3/4): ").strip()
     if ch == "2":
         y = _input("🔢 Año (ej. 2018): ").strip()
         try:
-            year = int(y)
+            year = int(y); plot_ndvi_year(year)
         except ValueError:
             print("⚠️ Año inválido.")
-            return
-        plot_ndvi_year(year)
+    elif ch == "3":
+        plot_features_overview()
+    elif ch == "4":
+        y = _input("🔢 Año (ej. 2018): ").strip()
+        try:
+            year = int(y); plot_features_year(year)
+        except ValueError:
+            print("⚠️ Año inválido.")
     else:
         plot_ndvi_trends()
+
 
 def run_all():
     # Descarga todo, analiza GLOBAL y ANUAL y genera ambos gráficos
@@ -130,6 +139,7 @@ def main():
             print("4) Ejecutar TODO el flujo (extraer + analizar + graficar)")
             print("5) Inspeccionar datasets disponibles")
             print("6) Correlación lluvia→NDVI (lags 0/+1/+2)")
+            print("7) Construir TABLA MAESTRA mensual (NDVI, precip, LST, SMAP, S2)")
             print("0) Salir\n")
 
             opt = _input("👉 Elige una opción: ").strip()
@@ -149,6 +159,12 @@ def main():
                     correlate_rain_ndvi()  # usa los CSV de modis_ndvi_monthly.csv y gpm_precip_monthly.csv
                 except Exception as e:
                     print(f"⚠️ Error en correlación: {e}")
+            elif opt == "7":
+                try:
+                    out, n = build_features_monthly(include_s2=True)
+                    print(f"✅ Tabla maestra creada: {out} ({n} filas)")
+                except Exception as e:
+                    print(f"⚠️ Error construyendo tabla maestra: {e}")
             elif opt == "0":
                 break
             else:
