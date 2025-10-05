@@ -17,7 +17,7 @@ import traceback
 
 from src.gee_auth import initialize_gee
 from src.data_collector import export_all, DOWNLOAD_FUNCTIONS
-from src.analysis import analyze_bloom_season
+from src.analysis import analyze_bloom_season, correlate_rain_ndvi
 from src.visualization import plot_ndvi_trends, plot_ndvi_year
 from src.dataset_inspector import inspect_all
 
@@ -129,6 +129,7 @@ def main():
             print("3) Generar gráficos")
             print("4) Ejecutar TODO el flujo (extraer + analizar + graficar)")
             print("5) Inspeccionar datasets disponibles")
+            print("6) Correlación lluvia→NDVI (lags 0/+1/+2)")
             print("0) Salir\n")
 
             opt = _input("👉 Elige una opción: ").strip()
@@ -142,6 +143,12 @@ def main():
                 run_all()
             elif opt == "5":
                 inspect_all()
+            elif opt == '6':
+                # NUEVO: calcular correlación lluvia→NDVI
+                try:
+                    correlate_rain_ndvi()  # usa los CSV de modis_ndvi_monthly.csv y gpm_precip_monthly.csv
+                except Exception as e:
+                    print(f"⚠️ Error en correlación: {e}")
             elif opt == "0":
                 break
             else:
