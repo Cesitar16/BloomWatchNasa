@@ -309,6 +309,73 @@ def plot_ndvi_vs_rain_year(
     return out
 
 
+# ------------------ 5) Pronóstico NDVI ------------------
+def plot_ndvi_forecast(
+    *,
+    forecast_csv: str = "data/processed/ndvi_forecast.csv",
+    output_path: str | None = None,
+) -> str:
+    """Plot historical NDVI together with the modelled future forecast."""
+
+    if not os.path.exists(forecast_csv):
+        raise FileNotFoundError(
+            "No existe data/processed/ndvi_forecast.csv. Ejecuta la opción 8 del menú primero."
+        )
+
+    df = pd.read_csv(forecast_csv)
+    if "date" not in df.columns or "ndvi" not in df.columns:
+        raise ValueError("El CSV de pronóstico debe contener 'date' y 'ndvi'.")
+
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df = df.dropna(subset=["date", "ndvi"]).sort_values("date")
+
+    hist = df[df.get("source") == "historical"].copy()
+    fut = df[df.get("source") != "historical"].copy()
+
+    plt.figure(figsize=(12, 5))
+    if not hist.empty:
+        plt.plot(hist["date"], hist["ndvi"], color=C_NDVI, linewidth=1.6, label="NDVI observado")
+
+    if not fut.empty:
+        plt.plot(
+            fut["date"],
+            fut["ndvi"],
+            color="#7c3aed",
+            linewidth=1.8,
+            linestyle="--",
+            label="NDVI pronosticado",
+        )
+        if {"lower", "upper"}.issubset(fut.columns):
+            plt.fill_between(
+                fut["date"],
+                fut["lower"].clip(lower=0, upper=1),
+                fut["upper"].clip(lower=0, upper=1),
+                color="#7c3aed",
+                alpha=0.18,
+                label="Intervalo 95%",
+            )
+
+    if not hist.empty and not fut.empty:
+        cutoff = hist["date"].max()
+        plt.axvline(cutoff, color="#94a3b8", linestyle=":", linewidth=1.2, label="Inicio pronóstico")
+
+    plt.title("BloomWatch 🌿 | Pronóstico NDVI mensual")
+    plt.xlabel("Fecha")
+    plt.ylabel("NDVI")
+    plt.ylim(0, 1)
+    plt.grid(alpha=0.3, linestyle="--", linewidth=0.6)
+    plt.legend(loc="best")
+
+    if output_path is None:
+        output_path = os.path.join(RES_DIR, "ndvi_forecast.png")
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=300)
+    plt.close()
+    print(f"✅ Gráfico de pronóstico NDVI guardado en {output_path}")
+    return output_path
+
+
 # --- Wrappers de compatibilidad para main.py (mantener nombres antiguos) ---
 def plot_features_overview(out_path: str = "data/results/features_multivariate.png"):
     """Alias antiguo -> gráfico multivariable 2015–2025."""
