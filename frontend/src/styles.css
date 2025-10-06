@@ -72,6 +72,8 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  text-decoration: none;
+  color: inherit;
 }
 
 .brand-icon {
@@ -104,7 +106,8 @@ button:disabled {
   gap: 0.5rem;
 }
 
-.header-nav button {
+.header-nav button,
+.header-nav a {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
@@ -114,17 +117,31 @@ button:disabled {
   background: rgba(15, 23, 42, 0.65);
   color: #e0f2fe;
   transition: background 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+  text-decoration: none;
 }
 
-.header-nav button svg {
+.header-nav button svg,
+.header-nav a svg {
   width: 16px;
   height: 16px;
 }
 
-.header-nav button:hover {
+.header-nav button:hover,
+.header-nav a:hover {
   background: rgba(37, 99, 235, 0.35);
   border-color: rgba(37, 99, 235, 0.6);
   transform: translateY(-1px);
+}
+
+.header-nav a:focus-visible {
+  outline: 2px solid rgba(59, 130, 246, 0.7);
+  outline-offset: 2px;
+}
+
+.header-nav-link-active {
+  background: rgba(22, 163, 74, 0.35);
+  border-color: rgba(22, 163, 74, 0.6);
+  box-shadow: 0 0 0 1px rgba(134, 239, 172, 0.35);
 }
 
 .app-main {

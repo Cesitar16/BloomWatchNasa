@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Area,
   AreaChart,
@@ -16,6 +16,7 @@ import {
 import { motion } from 'framer-motion';
 import MapView from './components/MapView.jsx';
 import { API_BASE_URL, requestPlot, triggerAnalysis, useApiData } from './hooks/useApi.js';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 function IconBase({ className, children, ...props }) {
   return (
@@ -131,6 +132,20 @@ const plotOptions = [
   { value: 'ndvi_rain_year', label: 'NDVI vs lluvia por año' }
 ];
 
+const SECTION_SCROLL_TARGETS = {
+  '/mapa': 'section-mapa',
+  '/series': 'section-series',
+  '/prediccion': 'section-prediccion',
+  '/galeria': 'section-galeria'
+};
+
+const NAVIGATION_LINKS = [
+  { path: '/mapa', label: 'Mapa', Icon: MapIcon },
+  { path: '/series', label: 'Series', Icon: LineChartIcon },
+  { path: '/prediccion', label: 'Predicción', Icon: Gauge },
+  { path: '/galeria', label: 'Galería', Icon: ImageIcon }
+];
+
 const monthFormatter = new Intl.DateTimeFormat('es', { month: 'short' });
 const fullDateFormatter = new Intl.DateTimeFormat('es', {
   year: 'numeric',
@@ -149,9 +164,9 @@ function formatErrorMessage(error) {
   return 'Se produjo un error al consultar el backend.';
 }
 
-function Section({ title, icon, subtitle, children }) {
+function Section({ id, title, icon, subtitle, children }) {
   return (
-    <section className="section-card">
+    <section className="section-card" id={id}>
       <div className="section-header">
         <div className="section-icon">{icon}</div>
         <div>
@@ -607,10 +622,12 @@ function CLIActions({
 }
 
 function Header() {
+  const location = useLocation();
+
   return (
     <header className="app-header">
       <div className="header-inner">
-        <div className="header-brand">
+        <Link to="/" className="header-brand">
           <div className="brand-icon">
             <Flower2 />
           </div>
@@ -618,20 +635,20 @@ function Header() {
             <h1>BloomWatch</h1>
             <p>Ciencia de datos ambiental en acción</p>
           </div>
-        </div>
+        </Link>
         <nav className="header-nav">
-          <button type="button">
-            <MapIcon /> Mapa
-          </button>
-          <button type="button">
-            <LineChartIcon /> Series
-          </button>
-          <button type="button">
-            <Gauge /> Predicción
-          </button>
-          <button type="button">
-            <ImageIcon /> Galería
-          </button>
+          {NAVIGATION_LINKS.map(({ path, label, Icon }) => {
+            const isActive = location.pathname === path;
+            return (
+              <Link
+                key={path}
+                to={path}
+                className={`header-nav-link${isActive ? ' header-nav-link-active' : ''}`}
+              >
+                <Icon /> {label}
+              </Link>
+            );
+          })}
         </nav>
       </div>
     </header>
@@ -643,6 +660,8 @@ function Footer() {
 }
 
 export default function App() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const {
     data: aoi,
     loading: loadingAoi,
@@ -696,6 +715,37 @@ export default function App() {
   const [globalError, setGlobalError] = useState(null);
   const [plotType, setPlotType] = useState(plotOptions[0].value);
   const [plotYear, setPlotYear] = useState(String(new Date().getFullYear()));
+
+  useEffect(() => {
+    const path = location.pathname || '/';
+    if (path === '/' || path === '') {
+      if (typeof window !== 'undefined') {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+      return;
+    }
+
+    const targetId = SECTION_SCROLL_TARGETS[path];
+    if (!targetId) {
+      navigate('/', { replace: true });
+      return;
+    }
+
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const element = document.getElementById(targetId);
+    if (!element) {
+      return;
+    }
+
+    const headerOffset = 88;
+    const elementPosition = element.getBoundingClientRect().top + window.scrollY;
+    const offsetPosition = Math.max(elementPosition - headerOffset, 0);
+
+    window.scrollTo({ top: offsetPosition, behavior: 'smooth' });
+  }, [location.pathname, navigate]);
 
   const ndviSeries = useMemo(() => {
     if (!timeseries?.length) return [];
@@ -902,6 +952,7 @@ export default function App() {
 
         <div className="map-series-grid">
           <Section
+            id="section-mapa"
             title="Mapa del área de estudio"
             icon={<MapIcon />}
             subtitle="Geometría provista por el backend"
@@ -920,6 +971,7 @@ export default function App() {
             )}
           </Section>
           <Section
+            id="section-series"
             title="NDVI vs precipitación"
             icon={<LineChartIcon />}
             subtitle="Serie temporal combinada"
@@ -940,6 +992,7 @@ export default function App() {
         </div>
 
         <Section
+          id="section-prediccion"
           title="Panel de predicción"
           icon={<Gauge />}
           subtitle="Métricas y pronóstico NDVI"
@@ -981,7 +1034,12 @@ export default function App() {
           />
         </Section>
 
-        <Section title="Galería de imágenes" icon={<ImageIcon />} subtitle="Gráficos generados desde src/visualization.py">
+        <Section
+          id="section-galeria"
+          title="Galería de imágenes"
+          icon={<ImageIcon />}
+          subtitle="Gráficos generados desde src/visualization.py"
+        >
           <Gallery plots={plots} loading={loadingPlots} onRefresh={refetchPlots} error={errorPlots} />
         </Section>
 

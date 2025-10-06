@@ -14,13 +14,15 @@ export default function MapView({ geometry }) {
     .filter((pair) => Number.isFinite(pair[0]) && Number.isFinite(pair[1]));
 
   const center = latLngs[0] ?? defaultCenter;
+  const bounds = latLngs.length ? latLngs : undefined;
 
   return (
     <div className="map-wrapper">
       <MapContainer
         className="map-canvas"
         center={center}
-        zoom={9}
+        bounds={bounds}
+        zoom={bounds ? 10 : 9}
         scrollWheelZoom={false}
       >
         <TileLayer
