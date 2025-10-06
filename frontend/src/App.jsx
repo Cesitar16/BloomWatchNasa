@@ -138,6 +138,17 @@ const fullDateFormatter = new Intl.DateTimeFormat('es', {
   day: '2-digit'
 });
 
+function formatErrorMessage(error) {
+  if (!error) return null;
+  if (error.response?.data?.detail) {
+    return error.response.data.detail;
+  }
+  if (error.message) {
+    return error.message;
+  }
+  return 'Se produjo un error al consultar el backend.';
+}
+
 function Section({ title, icon, subtitle, children }) {
   return (
     <section className="section-card">
@@ -266,7 +277,9 @@ function NDVIForecastArea({ data }) {
   );
 }
 
-function DatasetTable({ rows, onRefresh, loading }) {
+function DatasetTable({ rows, onRefresh, loading, error }) {
+  const errorMessage = formatErrorMessage(error);
+
   return (
     <div className="dataset-card">
       <div className="dataset-toolbar">
@@ -275,7 +288,14 @@ function DatasetTable({ rows, onRefresh, loading }) {
           {loading ? 'Actualizando…' : 'Actualizar'}
         </button>
       </div>
-      {loading && !rows?.length ? (
+      {errorMessage ? (
+        <div className="section-status section-error">
+          <span>{errorMessage}</span>
+          <button type="button" onClick={onRefresh} disabled={loading}>
+            Reintentar
+          </button>
+        </div>
+      ) : loading && !rows?.length ? (
         <p className="section-status">Cargando datasets…</p>
       ) : rows?.length ? (
         <div className="dataset-table-wrapper">
@@ -309,7 +329,9 @@ function DatasetTable({ rows, onRefresh, loading }) {
   );
 }
 
-function Gallery({ plots, loading, onRefresh }) {
+function Gallery({ plots, loading, onRefresh, error }) {
+  const errorMessage = formatErrorMessage(error);
+
   return (
     <div className="gallery-card">
       <div className="gallery-toolbar">
@@ -318,7 +340,14 @@ function Gallery({ plots, loading, onRefresh }) {
           {loading ? 'Actualizando…' : 'Actualizar'}
         </button>
       </div>
-      {loading && !plots?.length ? (
+      {errorMessage ? (
+        <div className="section-status section-error">
+          <span>{errorMessage}</span>
+          <button type="button" onClick={onRefresh} disabled={loading}>
+            Reintentar
+          </button>
+        </div>
+      ) : loading && !plots?.length ? (
         <p className="section-status">Buscando gráficos generados…</p>
       ) : plots?.length ? (
         <div className="gallery-grid">
@@ -345,7 +374,20 @@ function Gallery({ plots, loading, onRefresh }) {
   );
 }
 
-function PredictionPanel({ data, loading, onRefresh, pending }) {
+function PredictionPanel({ data, loading, onRefresh, pending, error }) {
+  const errorMessage = formatErrorMessage(error);
+
+  if (errorMessage && !loading) {
+    return (
+      <div className="prediction-empty">
+        <p>{errorMessage}</p>
+        <button type="button" onClick={onRefresh} disabled={pending || loading}>
+          {pending || loading ? 'Procesando…' : 'Reintentar'}
+        </button>
+      </div>
+    );
+  }
+
   if (loading && !data) {
     return <p className="section-status">Calculando modelo de floración…</p>;
   }
@@ -443,8 +485,26 @@ function CLIActions({
   plotYear,
   onPlotYearChange,
   requiresYear,
-  pendingAction
+  pendingAction,
+  error,
+  onReloadMenu,
+  loadingMenu
 }) {
+  const errorMessage = formatErrorMessage(error);
+
+  if (errorMessage) {
+    return (
+      <div className="section-status section-error">
+        <span>{errorMessage}</span>
+        {onReloadMenu && (
+          <button type="button" onClick={onReloadMenu} disabled={loadingMenu}>
+            Reintentar
+          </button>
+        )}
+      </div>
+    );
+  }
+
   if (!menu?.length) {
     return <p className="section-status">El backend no expuso opciones del menú CLI.</p>;
   }
@@ -583,28 +643,52 @@ function Footer() {
 }
 
 export default function App() {
-  const { data: aoi } = useApiData('/aoi');
-  const { data: datasets, loading: loadingDatasets, refetch: refetchDatasets } = useApiData('/datasets');
+  const {
+    data: aoi,
+    loading: loadingAoi,
+    error: errorAoi,
+    refetch: refetchAoi
+  } = useApiData('/aoi');
+  const {
+    data: datasets,
+    loading: loadingDatasets,
+    error: errorDatasets,
+    refetch: refetchDatasets
+  } = useApiData('/datasets');
   const {
     data: timeseries,
     loading: loadingTimeseries,
+    error: errorTimeseries,
     refetch: refetchTimeseries
   } = useApiData('/timeseries');
-  const { data: bloom, loading: loadingBloom, refetch: refetchBloom } = useApiData('/analysis/bloom');
+  const {
+    data: bloom,
+    loading: loadingBloom,
+    error: errorBloom,
+    refetch: refetchBloom
+  } = useApiData('/analysis/bloom');
   const {
     data: correlation,
     loading: loadingCorrelation,
+    error: errorCorrelation,
     refetch: refetchCorrelation
   } = useApiData('/analysis/correlation');
   const {
     data: predictions,
     loading: loadingPredictions,
+    error: errorPredictions,
     refetch: refetchPredictions
   } = useApiData('/predictions/bloom');
-  const { data: menuOptions } = useApiData('/menu');
+  const {
+    data: menuOptions,
+    loading: loadingMenu,
+    error: errorMenu,
+    refetch: refetchMenu
+  } = useApiData('/menu');
   const {
     data: plots,
     loading: loadingPlots,
+    error: errorPlots,
     refetch: refetchPlots
   } = useApiData('/plots');
 
@@ -679,6 +763,30 @@ export default function App() {
   }, [bloom, ndviSeries]);
 
   const requiresYear = plotType === 'ndvi_year' || plotType === 'ndvi_rain_year';
+
+  const anyLoading =
+    loadingAoi ||
+    loadingDatasets ||
+    loadingTimeseries ||
+    loadingBloom ||
+    loadingCorrelation ||
+    loadingPredictions ||
+    loadingPlots ||
+    loadingMenu ||
+    pendingAction !== null;
+  const firstError =
+    errorAoi ||
+    errorDatasets ||
+    errorTimeseries ||
+    errorBloom ||
+    errorCorrelation ||
+    errorPredictions ||
+    errorPlots ||
+    errorMenu;
+  const heroStatusLabel = firstError ? 'Revisa el backend' : anyLoading ? 'Actualizando…' : 'Listo';
+  const heroStatusHint = firstError
+    ? formatErrorMessage(firstError)
+    : 'NDVI • Lluvia • AOI sincronizados';
 
   const handleBloom = async (mode) => {
     try {
@@ -785,8 +893,8 @@ export default function App() {
           </div>
           <div className="hero-status">
             <p>Estado del sistema</p>
-            <strong>{loadingBloom || loadingTimeseries ? 'Actualizando…' : 'Listo'}</strong>
-            <span>NDVI • Lluvia • AOI sincronizados</span>
+            <strong>{heroStatusLabel}</strong>
+            <span>{heroStatusHint}</span>
           </div>
         </motion.div>
 
@@ -798,14 +906,32 @@ export default function App() {
             icon={<MapIcon />}
             subtitle="Geometría provista por el backend"
           >
-            <MapView geometry={aoi} />
+            {errorAoi ? (
+              <div className="section-status section-error">
+                <span>{formatErrorMessage(errorAoi)}</span>
+                <button type="button" onClick={refetchAoi} disabled={loadingAoi}>
+                  Reintentar
+                </button>
+              </div>
+            ) : loadingAoi ? (
+              <p className="section-status">Cargando geometría del sitio…</p>
+            ) : (
+              <MapView geometry={aoi} />
+            )}
           </Section>
           <Section
             title="NDVI vs precipitación"
             icon={<LineChartIcon />}
             subtitle="Serie temporal combinada"
           >
-            {loadingTimeseries ? (
+            {errorTimeseries ? (
+              <div className="section-status section-error">
+                <span>{formatErrorMessage(errorTimeseries)}</span>
+                <button type="button" onClick={refetchTimeseries} disabled={loadingTimeseries}>
+                  Reintentar
+                </button>
+              </div>
+            ) : loadingTimeseries ? (
               <p className="section-status">Cargando serie temporal…</p>
             ) : (
               <NDVIRainChart data={ndviSeries} />
@@ -823,6 +949,7 @@ export default function App() {
             loading={loadingPredictions}
             onRefresh={handlePredictions}
             pending={pendingAction === 'predictions'}
+            error={errorPredictions}
           />
         </Section>
 
@@ -831,7 +958,14 @@ export default function App() {
           icon={<Droplets />}
           subtitle="Coeficiente de Pearson por rezago"
         >
-          {loadingCorrelation ? (
+          {errorCorrelation ? (
+            <div className="section-status section-error">
+              <span>{formatErrorMessage(errorCorrelation)}</span>
+              <button type="button" onClick={refetchCorrelation} disabled={loadingCorrelation}>
+                Reintentar
+              </button>
+            </div>
+          ) : loadingCorrelation ? (
             <p className="section-status">Consultando correlaciones…</p>
           ) : (
             <CorrelationBarChart data={correlation} />
@@ -843,11 +977,12 @@ export default function App() {
             rows={datasets}
             loading={loadingDatasets}
             onRefresh={refetchDatasets}
+            error={errorDatasets}
           />
         </Section>
 
         <Section title="Galería de imágenes" icon={<ImageIcon />} subtitle="Gráficos generados desde src/visualization.py">
-          <Gallery plots={plots} loading={loadingPlots} onRefresh={refetchPlots} />
+          <Gallery plots={plots} loading={loadingPlots} onRefresh={refetchPlots} error={errorPlots} />
         </Section>
 
         <Section
@@ -867,6 +1002,9 @@ export default function App() {
             onPlotYearChange={(event) => setPlotYear(event.target.value)}
             requiresYear={requiresYear}
             pendingAction={pendingAction}
+            error={errorMenu}
+            onReloadMenu={refetchMenu}
+            loadingMenu={loadingMenu}
           />
         </Section>
       </main>
