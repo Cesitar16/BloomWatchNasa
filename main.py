@@ -63,8 +63,6 @@ def ensure_initialized(force: bool = False) -> None:
 def download_datasets(selected_keys: Optional[List[str]] = None) -> List[Dict[str, Any]]:
     """Ejecuta las rutinas de descarga definidas en el menú (opción 1)."""
 
-    ensure_initialized()
-
     if not DOWNLOAD_FUNCTIONS:
         return []
 
@@ -110,8 +108,6 @@ def download_datasets(selected_keys: Optional[List[str]] = None) -> List[Dict[st
 
 def run_bloom_analysis(mode: str = "global") -> Optional[str]:
     """Ejecuta la opción 2 del menú (análisis de floración)."""
-
-    ensure_initialized()
     return analyze_bloom_season(mode=mode)
 
 
@@ -122,8 +118,6 @@ def generate_plot(
     results_csv: Optional[str] = None,
 ) -> Optional[str]:
     """Genera los gráficos disponibles en la opción 3 del menú."""
-
-    ensure_initialized()
 
     if plot == "ndvi_trend":
         return plot_ndvi_trends(results_csv)
@@ -145,15 +139,11 @@ def compute_correlation(
     *, features_csv: str = "data/processed/features_monthly.csv", max_lag: int = 2
 ) -> Optional[str]:
     """Calcula la correlación lluvia → NDVI (opción 6)."""
-
-    ensure_initialized()
     return correlate_rain_ndvi(features_csv=features_csv, max_lag=max_lag)
 
 
 def build_master_table(include_s2: bool = True) -> Optional[Dict[str, Any]]:
     """Construye la tabla maestra mensual (opción 7)."""
-
-    ensure_initialized()
     try:
         out, rows = build_features_monthly(include_s2=include_s2)
         return {"path": out, "rows": rows}
@@ -290,7 +280,6 @@ def execute_menu_option(option: str, **kwargs) -> Any:
             results_csv=kwargs.get("results_csv"),
         )
     if option == "4":
-        ensure_initialized()
         downloads = download_datasets()
         global_csv = run_bloom_analysis(mode="global")
         annual_csv = run_bloom_analysis(mode="annual")
@@ -304,7 +293,6 @@ def execute_menu_option(option: str, **kwargs) -> Any:
             "trend_annual": trend_annual,
         }
     if option == "5":
-        ensure_initialized()
         inspect_all()
         return None
     if option == "6":
@@ -465,7 +453,6 @@ def main():
     print("=" * 60)
 
     try:
-        ensure_initialized()
         while True:
             print("\n=== MENÚ PRINCIPAL ===")
             print("1) Extraer datos satelitales (selección por satélite)")
