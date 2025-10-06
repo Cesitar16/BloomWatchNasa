@@ -13,22 +13,116 @@ import {
   XAxis,
   YAxis
 } from 'recharts';
-import {
-  CalendarDays,
-  Droplets,
-  Flower2,
-  Gauge,
-  Image as ImageIcon,
-  Info,
-  LineChart as LineChartIcon,
-  Map as MapIcon,
-  Play,
-  RefreshCw,
-  Timer
-} from 'lucide-react';
 import { motion } from 'framer-motion';
 import MapView from './components/MapView.jsx';
 import { API_BASE_URL, requestPlot, triggerAnalysis, useApiData } from './hooks/useApi.js';
+
+function IconBase({ className, children, ...props }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      width="24"
+      height="24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      {children}
+    </svg>
+  );
+}
+
+const CalendarDays = (props) => (
+  <IconBase {...props}>
+    <rect x="3" y="4" width="18" height="18" rx="2" />
+    <path d="M16 2v4M8 2v4" />
+    <path d="M3 10h18" />
+    <path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01" />
+  </IconBase>
+);
+
+const Droplets = (props) => (
+  <IconBase {...props}>
+    <path d="M12 3c2.5 3.5 5 6.5 5 9.5a5 5 0 1 1-10 0C7 9.5 9.5 6.5 12 3Z" />
+    <path d="M9 12a3 3 0 0 0 6 0" />
+  </IconBase>
+);
+
+const Flower2 = (props) => (
+  <IconBase {...props}>
+    <circle cx="12" cy="12" r="2.5" />
+    <path d="M12 4c1.2-2 4.8-2 6 0 1.2 2-.3 4.6-2.5 5.2" />
+    <path d="M20 12c2 1.2 2 4.8 0 6-2 1.2-4.6-.3-5.2-2.5" />
+    <path d="M12 20c-1.2 2-4.8 2-6 0-1.2-2 .3-4.6 2.5-5.2" />
+    <path d="M4 12c-2-1.2-2-4.8 0-6 2-1.2 4.6.3 5.2 2.5" />
+  </IconBase>
+);
+
+const Gauge = (props) => (
+  <IconBase {...props}>
+    <path d="M12 20a8 8 0 1 1 8-8" />
+    <path d="m12 12 4-4" />
+    <path d="M12 20v2" />
+  </IconBase>
+);
+
+const ImageIcon = (props) => (
+  <IconBase {...props}>
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <circle cx="9" cy="10" r="1.5" />
+    <path d="m21 16-4.5-4.5a1 1 0 0 0-1.4 0L11 16" />
+  </IconBase>
+);
+
+const Info = (props) => (
+  <IconBase {...props}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 16v-4" />
+    <path d="M12 8h.01" />
+  </IconBase>
+);
+
+const LineChartIcon = (props) => (
+  <IconBase {...props}>
+    <path d="M3 3v18h18" />
+    <path d="m7 14 4-5 3 3 5-6" />
+  </IconBase>
+);
+
+const MapIcon = (props) => (
+  <IconBase {...props}>
+    <path d="M10 4 4 6v14l6-2 4 2 6-2V4l-6 2-4-2Z" />
+    <path d="M10 4v14" />
+    <path d="M14 6v14" />
+  </IconBase>
+);
+
+const Play = (props) => (
+  <IconBase {...props}>
+    <path d="M8 5v14l11-7Z" />
+  </IconBase>
+);
+
+const RefreshCw = (props) => (
+  <IconBase {...props}>
+    <path d="M21 12a9 9 0 1 1-3-6.7" />
+    <path d="M21 6v6h-6" />
+  </IconBase>
+);
+
+const Timer = (props) => (
+  <IconBase {...props}>
+    <circle cx="12" cy="14" r="8" />
+    <path d="M12 14 15 11" />
+    <path d="M9 2h6" />
+    <path d="M12 4v2" />
+  </IconBase>
+);
 
 const plotOptions = [
   { value: 'ndvi_trend', label: 'Tendencia NDVI con floración' },
