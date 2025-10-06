@@ -5,3 +5,5 @@ scikit-learn
 numpy
 seaborn
 jupyter
+fastapi
+uvicorn[standard]
