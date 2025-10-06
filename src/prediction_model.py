@@ -193,6 +193,7 @@ def train_bloom_predictor(
     ] + [f"NDVI_lag_{lag}" for lag in ndvi_lags]
 
     reg_train = lagged.dropna(subset=[f"NDVI_lag_{lag}" for lag in ndvi_lags]).copy()
+    reg_train = reg_train.dropna(subset=["NDVI"])
     regressor = HistGradientBoostingRegressor(max_depth=6, learning_rate=0.08, max_iter=400, random_state=42)
 
     reg_pipeline = Pipeline(
@@ -221,12 +222,29 @@ def train_bloom_predictor(
 
     climatology_columns = ["precip_mm", "LST_C", "soil_moisture", "s2_ndvi"]
     climatology = _compute_monthly_climatology(df, climatology_columns)
-    global_means = {
-        col: float(df[col].dropna().mean()) if col in df.columns else 0.0
-        for col in climatology_columns
-    }
+    global_means = {}
+    for col in climatology_columns:
+        if col in df.columns:
+            series_non_nan = df[col].dropna()
+            mean_value = float(series_non_nan.mean()) if not series_non_nan.empty else 0.0
+            if np.isnan(mean_value):
+                mean_value = 0.0
+            global_means[col] = mean_value
+        else:
+            global_means[col] = 0.0
 
-    ndvi_history = df["NDVI"].fillna(df["NDVI"].median()).tolist()
+    ndvi_series = df["NDVI"].astype(float)
+    ndvi_non_nan = ndvi_series.dropna()
+    if ndvi_non_nan.empty:
+        raise ValueError("No hay valores de NDVI disponibles para generar el pronóstico.")
+    fallback_ndvi = float(ndvi_non_nan.median())
+    if np.isnan(fallback_ndvi):
+        fallback_ndvi = float(ndvi_non_nan.mean()) if not ndvi_non_nan.empty else 0.0
+    if np.isnan(fallback_ndvi):
+        fallback_ndvi = 0.0
+
+    ndvi_filled = ndvi_series.fillna(fallback_ndvi)
+    ndvi_history = [float(fallback_ndvi if pd.isna(value) else value) for value in ndvi_filled.tolist()]
     if not ndvi_history:
         raise ValueError("No hay valores de NDVI disponibles para generar el pronóstico.")
     max_lag = max(ndvi_lags)
@@ -326,6 +344,7 @@ def train_bloom_predictor(
 
     ndvi_historical = df[["date", "NDVI"]].copy()
     ndvi_historical.rename(columns={"NDVI": "ndvi"}, inplace=True)
+    ndvi_historical = ndvi_historical.dropna(subset=["ndvi"])
     ndvi_historical["lower"] = np.nan
     ndvi_historical["upper"] = np.nan
     ndvi_historical["source"] = "historical"
