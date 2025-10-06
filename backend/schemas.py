@@ -117,7 +117,13 @@ class PlotItem(BaseModel):
     """Metadata about a generated plot stored in data/results."""
 
     name: str
-    plot_type: Literal["ndvi_trend", "ndvi_year", "features_overview", "ndvi_rain_year"]
+    plot_type: Literal[
+        "ndvi_trend",
+        "ndvi_year",
+        "features_overview",
+        "ndvi_rain_year",
+        "ndvi_forecast",
+    ]
     path: str
     url: str
     generated_at: Optional[str] = Field(
@@ -141,6 +147,12 @@ class PredictionMetrics(BaseModel):
     positive_rate: Optional[float] = Field(
         None, ge=0, le=1, description="Proporción de meses en floración en el conjunto de entrenamiento."
     )
+    ndvi_rmse: Optional[float] = Field(
+        None, ge=0, description="RMSE del modelo de pronóstico NDVI sobre el historial."
+    )
+    ndvi_mae: Optional[float] = Field(
+        None, ge=0, description="MAE del modelo de pronóstico NDVI sobre el historial."
+    )
 
 
 class BloomPredictionPoint(BaseModel):
@@ -151,6 +163,9 @@ class BloomPredictionPoint(BaseModel):
     predicted: bool
     status: Literal["historical", "forecast"]
     ndvi: Optional[float] = Field(None, description="NDVI mensual utilizado para la predicción.")
+    ndvi_source: Optional[Literal["observed", "forecast"]] = Field(
+        None, description="Origen del NDVI utilizado para la predicción."
+    )
     precipitation_mm: Optional[float] = Field(None, description="Precipitación mensual acumulada.")
     lst_c: Optional[float] = Field(None, description="Temperatura superficial promedio (°C).")
     soil_moisture: Optional[float] = Field(
@@ -167,6 +182,38 @@ class BloomPredictionPoint(BaseModel):
     )
 
 
+class NDVIForecastPoint(BaseModel):
+    """Serie mensual de NDVI observada y pronosticada."""
+
+    date: str
+    ndvi: float = Field(..., ge=0, le=1)
+    lower: Optional[float] = Field(
+        None, ge=0, le=1, description="Límite inferior del intervalo de confianza."
+    )
+    upper: Optional[float] = Field(
+        None, ge=0, le=1, description="Límite superior del intervalo de confianza."
+    )
+    source: Literal["historical", "forecast"]
+
+
+class ForecastSummary(BaseModel):
+    """Datos descriptivos del horizonte de pronóstico."""
+
+    months: int
+    start: Optional[str]
+    end: Optional[str]
+    ndvi_model: Optional[str]
+    ndvi_rmse: Optional[float]
+    ndvi_mae: Optional[float]
+
+
+class ForecastPlot(BaseModel):
+    """Metadatos del gráfico de pronóstico NDVI generado en disco."""
+
+    path: str
+    url: str
+
+
 class BloomPredictionResponse(BaseModel):
     """Complete payload returned by the bloom prediction endpoint."""
 
@@ -179,3 +226,8 @@ class BloomPredictionResponse(BaseModel):
     )
     metrics: PredictionMetrics
     predictions: List[BloomPredictionPoint]
+    forecast: Optional[ForecastSummary] = None
+    ndvi_forecast: List[NDVIForecastPoint] = Field(
+        default_factory=list, description="Serie mensual NDVI histórico + pronóstico."
+    )
+    ndvi_forecast_plot: Optional[ForecastPlot] = None

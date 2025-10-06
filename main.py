@@ -17,6 +17,8 @@ import traceback
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import pandas as pd
+
 from src.gee_auth import initialize_gee
 from src.data_collector import DOWNLOAD_FUNCTIONS, build_features_monthly
 from src.analysis import analyze_bloom_season, correlate_rain_ndvi
@@ -25,6 +27,7 @@ from src.visualization import (
     plot_features_year,
     plot_ndvi_trends,
     plot_ndvi_year,
+    plot_ndvi_forecast,
 )
 from src.dataset_inspector import inspect_all
 from src.prediction_model import train_bloom_predictor
@@ -165,14 +168,30 @@ def generate_bloom_predictions(probability_threshold: float = 0.5) -> Dict[str, 
     table = result.table.copy()
     table["date"] = table["date"].dt.strftime("%Y-%m-%d")
 
-    output_path = Path("data/processed/bloom_predictions.csv")
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    table.to_csv(output_path, index=False)
+    predictions_path = Path("data/processed/bloom_predictions.csv")
+    predictions_path.parent.mkdir(parents=True, exist_ok=True)
+    table.to_csv(predictions_path, index=False)
+
+    ndvi_forecast = result.ndvi_forecast.copy()
+    ndvi_forecast["date"] = pd.to_datetime(ndvi_forecast["date"])
+    ndvi_forecast["date"] = ndvi_forecast["date"].dt.strftime("%Y-%m-%d")
+
+    ndvi_forecast_path = Path("data/processed/ndvi_forecast.csv")
+    ndvi_forecast.to_csv(ndvi_forecast_path, index=False)
+
+    forecast_plot: Optional[str] = None
+    try:
+        forecast_plot = plot_ndvi_forecast(forecast_csv=str(ndvi_forecast_path))
+    except Exception as exc:  # pragma: no cover - solo logging
+        print(f"⚠️ No fue posible generar el gráfico de pronóstico NDVI: {exc}")
 
     metadata = result.metadata.copy()
-    metadata["predictions_path"] = str(output_path)
+    metadata["predictions_path"] = str(predictions_path)
     metadata["records"] = int(len(table))
     metadata["forecast_records"] = int(len(result.forecast_rows))
+    metadata["ndvi_forecast_path"] = str(ndvi_forecast_path)
+    if forecast_plot:
+        metadata["ndvi_forecast_plot"] = forecast_plot
 
     return metadata
 
@@ -422,6 +441,22 @@ def menu_predict():
         print(f"   Exactitud (train): {accuracy:.2%}")
     if roc_auc is not None:
         print(f"   ROC-AUC (train): {roc_auc:.3f}")
+
+    forecast_meta = metadata.get("forecast", {})
+    if forecast_meta:
+        months = forecast_meta.get("months")
+        start = forecast_meta.get("start")
+        end = forecast_meta.get("end")
+        if months:
+            print(f"   Pronóstico NDVI: {months} meses ({start} → {end})")
+        rmse = forecast_meta.get("ndvi_rmse")
+        mae = forecast_meta.get("ndvi_mae")
+        if rmse is not None or mae is not None:
+            rmse_txt = f"{rmse:.3f}" if rmse is not None else "—"
+            mae_txt = f"{mae:.3f}" if mae is not None else "—"
+            print(f"   Error NDVI (RMSE/MAE): {rmse_txt} / {mae_txt}")
+    if metadata.get("ndvi_forecast_plot"):
+        print(f"   Gráfico pronóstico NDVI: {metadata['ndvi_forecast_plot']}")
 
 
 def main():

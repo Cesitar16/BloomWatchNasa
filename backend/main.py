@@ -24,7 +24,10 @@ from .schemas import (
     BloomSummary,
     CorrelationRequest,
     DatasetListItem,
+    ForecastPlot,
+    ForecastSummary,
     MenuOption,
+    NDVIForecastPoint,
     PredictionMetrics,
     PlotItem,
     PlotRequest,
@@ -87,6 +90,8 @@ def _plot_type_from_name(name: str) -> str:
     stem = Path(name).stem
     if stem.startswith("ndvi_trend"):
         return "ndvi_trend"
+    if stem.startswith("ndvi_forecast"):
+        return "ndvi_forecast"
     if stem.startswith("ndvi_rain_"):
         return "ndvi_rain_year"
     if stem.startswith("ndvi_"):
@@ -404,6 +409,11 @@ def get_bloom_predictions() -> BloomPredictionResponse:
                 predicted=predicted_label,
                 status=status,
                 ndvi=_optional_float(row.get("NDVI")),
+                ndvi_source=(
+                    str(row.get("ndvi_source"))
+                    if pd.notna(row.get("ndvi_source"))
+                    else None
+                ),
                 precipitation_mm=_optional_float(row.get("precip_mm")),
                 lst_c=_optional_float(row.get("LST_C")),
                 soil_moisture=_optional_float(row.get("soil_moisture")),
@@ -413,11 +423,57 @@ def get_bloom_predictions() -> BloomPredictionResponse:
         )
 
     metrics_dict = result.metadata.get("metrics", {})
+    forecast_meta = result.metadata.get("forecast", {})
+
     metrics = PredictionMetrics(
         accuracy=_optional_float(metrics_dict.get("accuracy")),
         roc_auc=_optional_float(metrics_dict.get("roc_auc")),
         positive_rate=_optional_float(result.metadata.get("positive_rate")),
+        ndvi_rmse=_optional_float(
+            metrics_dict.get("ndvi_rmse") or forecast_meta.get("ndvi_rmse")
+        ),
+        ndvi_mae=_optional_float(
+            metrics_dict.get("ndvi_mae") or forecast_meta.get("ndvi_mae")
+        ),
     )
+
+    forecast_summary: ForecastSummary | None = None
+    if forecast_meta:
+        months_value = forecast_meta.get("months")
+        forecast_summary = ForecastSummary(
+            months=int(months_value) if months_value is not None else 0,
+            start=forecast_meta.get("start"),
+            end=forecast_meta.get("end"),
+            ndvi_model=forecast_meta.get("ndvi_model"),
+            ndvi_rmse=_optional_float(forecast_meta.get("ndvi_rmse")),
+            ndvi_mae=_optional_float(forecast_meta.get("ndvi_mae")),
+        )
+
+    ndvi_series = result.ndvi_forecast.copy()
+    ndvi_series["date"] = pd.to_datetime(ndvi_series["date"], errors="coerce")
+    ndvi_series = ndvi_series.dropna(subset=["date", "ndvi"]).sort_values("date")
+
+    ndvi_points: List[NDVIForecastPoint] = []
+    for _, row in ndvi_series.iterrows():
+        ndvi_points.append(
+            NDVIForecastPoint(
+                date=row["date"].strftime("%Y-%m-%d"),
+                ndvi=float(row["ndvi"]),
+                lower=_optional_float(row.get("lower")),
+                upper=_optional_float(row.get("upper")),
+                source=str(row.get("source", "historical")),
+            )
+        )
+
+    plot_meta = result.metadata.get("ndvi_forecast_plot")
+    forecast_plot: ForecastPlot | None = None
+    if plot_meta:
+        plot_path = Path(plot_meta)
+        if plot_path.exists():
+            forecast_plot = ForecastPlot(
+                path=str(plot_path),
+                url=f"/plots/{plot_path.name}",
+            )
 
     return BloomPredictionResponse(
         model=str(result.metadata.get("model", "unknown")),
@@ -427,6 +483,9 @@ def get_bloom_predictions() -> BloomPredictionResponse:
         training_range=result.metadata.get("training_range"),
         metrics=metrics,
         predictions=predictions,
+        forecast=forecast_summary,
+        ndvi_forecast=ndvi_points,
+        ndvi_forecast_plot=forecast_plot,
     )
 
 
