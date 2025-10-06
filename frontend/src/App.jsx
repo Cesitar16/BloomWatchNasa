@@ -1,3 +1,12 @@
+import { useMemo, useState } from 'react';
+import MapView from './components/MapView.jsx';
+import SummaryCards from './components/SummaryCards.jsx';
+import BloomChart from './components/BloomChart.jsx';
+import CorrelationChart from './components/CorrelationChart.jsx';
+import DataTable from './components/DataTable.jsx';
+import PlotGallery from './components/PlotGallery.jsx';
+import PredictionPanel from './components/PredictionPanel.jsx';
+import { requestPlot, triggerAnalysis, useApiData } from './hooks/useApi.js';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Area,
@@ -124,15 +133,6 @@ const Timer = (props) => (
     <path d="M12 4v2" />
   </IconBase>
 );
-import { useMemo, useState } from 'react';
-import MapView from './components/MapView.jsx';
-import SummaryCards from './components/SummaryCards.jsx';
-import BloomChart from './components/BloomChart.jsx';
-import CorrelationChart from './components/CorrelationChart.jsx';
-import DataTable from './components/DataTable.jsx';
-import PlotGallery from './components/PlotGallery.jsx';
-import PredictionPanel from './components/PredictionPanel.jsx';
-import { requestPlot, triggerAnalysis, useApiData } from './hooks/useApi.js';
 
 const plotOptions = [
   { value: 'ndvi_trend', label: 'Tendencia NDVI con floración' },
