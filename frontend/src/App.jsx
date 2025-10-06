@@ -23,6 +23,7 @@ import {
   LineChart as LineChartIcon,
   Map as MapIcon,
   Play,
+  RefreshCw,
   Timer
 } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -37,6 +38,11 @@ const plotOptions = [
 ];
 
 const monthFormatter = new Intl.DateTimeFormat('es', { month: 'short' });
+const fullDateFormatter = new Intl.DateTimeFormat('es', {
+  year: 'numeric',
+  month: 'short',
+  day: '2-digit'
+});
 
 function Section({ title, icon, subtitle, children }) {
   return (
@@ -53,11 +59,11 @@ function Section({ title, icon, subtitle, children }) {
   );
 }
 
-function StatCard({ icon, label, value, hint }) {
+function Stat({ icon, label, value, hint }) {
   return (
-    <div className="stat-card">
+    <div className="stat-block">
       <div className="stat-icon">{icon}</div>
-      <div className="stat-content">
+      <div className="stat-copy">
         <span className="stat-label">{label}</span>
         <span className="stat-value">{value}</span>
         {hint && <span className="stat-hint">{hint}</span>}
@@ -72,10 +78,10 @@ function NDVIRainChart({ data }) {
   }
 
   return (
-    <div className="chart-wrapper">
+    <div className="chart-container">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data} margin={{ top: 10, right: 16, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#cbd5f5" />
+          <CartesianGrid strokeDasharray="3 3" stroke="#dbeafe" />
           <XAxis dataKey="date" tick={{ fontSize: 12 }} tickMargin={8} minTickGap={24} />
           <YAxis
             yAxisId="left"
@@ -123,7 +129,7 @@ function CorrelationBarChart({ data }) {
   const domainMax = Math.min(1, Math.max(0.5, ...data.map((d) => Math.abs(d.r_pearson ?? 0))));
 
   return (
-    <div className="chart-wrapper">
+    <div className="chart-container">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke="#dbeafe" />
@@ -143,7 +149,7 @@ function NDVIForecastArea({ data }) {
   }
 
   return (
-    <div className="chart-wrapper">
+    <div className="chart-container">
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data} margin={{ top: 10, right: 16, left: 0, bottom: 0 }}>
           <defs>
@@ -152,7 +158,7 @@ function NDVIForecastArea({ data }) {
               <stop offset="95%" stopColor="#16a34a" stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#cbd5f5" />
+          <CartesianGrid strokeDasharray="3 3" stroke="#dbeafe" />
           <XAxis dataKey="date" tickMargin={8} minTickGap={24} />
           <YAxis domain={[0, 1]} tickFormatter={(value) => value.toFixed(2)} />
           <Tooltip />
@@ -270,10 +276,15 @@ function PredictionPanel({ data, loading, onRefresh, pending }) {
     metrics?.positive_rate != null && { label: 'Tasa positiva', value: (metrics.positive_rate * 100).toFixed(1) + '%' }
   ].filter(Boolean);
 
-  const gridItems = (predictions ?? []).slice(0, 12);
+  const sortedPredictions = [...(predictions ?? [])].sort((a, b) => {
+    const aDate = new Date(a.date);
+    const bDate = new Date(b.date);
+    return aDate - bDate;
+  });
+  const gridItems = sortedPredictions.slice(0, 12);
 
   return (
-    <div className="prediction-panel">
+    <div className="prediction-grid">
       <div className="prediction-sidebar">
         <div className="prediction-toolbar">
           <span>Modelo: {data.model}</span>
@@ -295,7 +306,7 @@ function PredictionPanel({ data, loading, onRefresh, pending }) {
         </div>
         <div className="prediction-months">
           <p>Probabilidad mensual de floración</p>
-          <div className="prediction-grid">
+          <div className="prediction-grid-months">
             {gridItems.length ? (
               gridItems.map((item) => {
                 const monthDate = new Date(item.date);
@@ -351,13 +362,15 @@ function CLIActions({
         if (key === '2') {
           return (
             <div key={key} className="cli-card">
-              <h3>{item.label}</h3>
-              <p>{item.description}</p>
+              <div>
+                <p className="cli-title">{item.label}</p>
+                <p className="cli-description">{item.description}</p>
+              </div>
               <div className="cli-actions">
-                <button type="button" onClick={() => onRunBloom('global')} disabled={pendingAction === 'bloom'}>
+                <button type="button" className="cli-primary" onClick={() => onRunBloom('global')} disabled={pendingAction === 'bloom'}>
                   {pendingAction === 'bloom' ? 'Procesando…' : 'Umbral global'}
                 </button>
-                <button type="button" onClick={() => onRunBloom('annual')} disabled={pendingAction === 'bloom'}>
+                <button type="button" className="cli-secondary" onClick={() => onRunBloom('annual')} disabled={pendingAction === 'bloom'}>
                   {pendingAction === 'bloom' ? 'Procesando…' : 'Umbral anual'}
                 </button>
               </div>
@@ -367,10 +380,12 @@ function CLIActions({
         if (key === '6') {
           return (
             <div key={key} className="cli-card">
-              <h3>{item.label}</h3>
-              <p>{item.description}</p>
+              <div>
+                <p className="cli-title">{item.label}</p>
+                <p className="cli-description">{item.description}</p>
+              </div>
               <div className="cli-actions">
-                <button type="button" onClick={onRunCorrelation} disabled={pendingAction === 'correlation'}>
+                <button type="button" className="cli-primary" onClick={onRunCorrelation} disabled={pendingAction === 'correlation'}>
                   {pendingAction === 'correlation' ? 'Procesando…' : 'Generar correlación'}
                 </button>
               </div>
@@ -380,8 +395,10 @@ function CLIActions({
         if (key === '3') {
           return (
             <div key={key} className="cli-card">
-              <h3>{item.label}</h3>
-              <p>{item.description}</p>
+              <div>
+                <p className="cli-title">{item.label}</p>
+                <p className="cli-description">{item.description}</p>
+              </div>
               <form className="plot-form" onSubmit={onRunPlot}>
                 <label>
                   Tipo de gráfico
@@ -399,7 +416,7 @@ function CLIActions({
                     <input type="number" value={plotYear} onChange={onPlotYearChange} min="2000" max="2100" />
                   </label>
                 )}
-                <button type="submit" disabled={pendingAction === 'plot'}>
+                <button type="submit" className="cli-primary" disabled={pendingAction === 'plot'}>
                   {pendingAction === 'plot' ? 'Generando…' : 'Crear gráfico'}
                 </button>
               </form>
@@ -409,10 +426,12 @@ function CLIActions({
         if (key === '8') {
           return (
             <div key={key} className="cli-card">
-              <h3>{item.label}</h3>
-              <p>{item.description}</p>
+              <div>
+                <p className="cli-title">{item.label}</p>
+                <p className="cli-description">{item.description}</p>
+              </div>
               <div className="cli-actions">
-                <button type="button" onClick={onRunPredictions} disabled={pendingAction === 'predictions'}>
+                <button type="button" className="cli-primary" onClick={onRunPredictions} disabled={pendingAction === 'predictions'}>
                   {pendingAction === 'predictions' ? 'Procesando…' : 'Reentrenar modelo'}
                 </button>
               </div>
@@ -421,8 +440,10 @@ function CLIActions({
         }
         return (
           <div key={key} className="cli-card cli-card-disabled">
-            <h3>{item.label}</h3>
-            <p>{item.description}</p>
+            <div>
+              <p className="cli-title">{item.label}</p>
+              <p className="cli-description">{item.description}</p>
+            </div>
             <span className="cli-hint">Disponible solo desde la terminal.</span>
           </div>
         );
@@ -506,7 +527,8 @@ export default function App() {
         ndvi: row.ndvi ?? null,
         precipitation_mm: row.precipitation_mm ?? null
       }))
-      .filter((row) => row.date);
+      .filter((row) => row.date)
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
   }, [timeseries]);
 
   const bloomStats = useMemo(() => {
@@ -543,10 +565,19 @@ export default function App() {
       ? Math.round(precipValues.reduce((a, b) => a + b, 0) / precipValues.length)
       : null;
 
+    const formatDate = (value) => {
+      if (!value) return '—';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) {
+        return value;
+      }
+      return fullDateFormatter.format(date);
+    };
+
     return {
-      lastStart: latest?.bloom_start ?? '—',
-      lastEnd: latest?.bloom_end ?? '—',
-      lastDuration: latest?.duration_days ?? '—',
+      lastStart: latest?.bloom_start ? formatDate(latest.bloom_start) : '—',
+      lastEnd: latest?.bloom_end ? formatDate(latest.bloom_end) : '—',
+      lastDuration: latest?.duration_days ?? null,
       avgDuration,
       ndviDelta,
       precipAvg
@@ -616,35 +647,34 @@ export default function App() {
   };
 
   return (
-    <div className="app-root">
+    <div className="app-shell">
       <Header />
-      <main className="dashboard">
+      <main className="app-main">
         <motion.div
-          className="hero-card"
-          initial={{ opacity: 0, y: 10 }}
+          initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
+          transition={{ duration: 0.45 }}
+          className="hero-card"
         >
-          <div className="hero-text">
-            <h2>Monitoreo de floración y vegetación</h2>
+          <div className="hero-copy">
+            <h2>Monitoreo de Floración y Vegetación</h2>
             <p>
-              Explora tendencias NDVI, precipitación y ventanas de floración generadas por el pipeline existente en
-              BloomWatch.
+              Explora tendencias NDVI, precipitación y ventanas de floración generadas por el pipeline existente en BloomWatch.
             </p>
             <div className="hero-stats">
-              <StatCard
-                icon={<CalendarDays />}
+              <Stat
+                icon={<CalendarDays className="stat-icon-figure" />}
                 label="Inicio reciente"
                 value={bloomStats?.lastStart ?? '—'}
               />
-              <StatCard
-                icon={<Timer />}
+              <Stat
+                icon={<Timer className="stat-icon-figure" />}
                 label="Duración"
                 value={bloomStats?.lastDuration ? `${bloomStats.lastDuration} días` : '—'}
                 hint={bloomStats?.avgDuration ? `Promedio ${bloomStats.avgDuration} días` : undefined}
               />
-              <StatCard
-                icon={<Flower2 />}
+              <Stat
+                icon={<Flower2 className="stat-icon-figure" />}
                 label="Δ NDVI (YoY)"
                 value={
                   bloomStats?.ndviDelta != null
@@ -652,8 +682,8 @@ export default function App() {
                     : '—'
                 }
               />
-              <StatCard
-                icon={<Droplets />}
+              <Stat
+                icon={<Droplets className="stat-icon-figure" />}
                 label="Precipitación típica"
                 value={bloomStats?.precipAvg ? `~${bloomStats.precipAvg} mm/mes` : '—'}
               />
@@ -661,14 +691,14 @@ export default function App() {
           </div>
           <div className="hero-status">
             <p>Estado del sistema</p>
-            <strong>Listo</strong>
+            <strong>{loadingBloom || loadingTimeseries ? 'Actualizando…' : 'Listo'}</strong>
             <span>NDVI • Lluvia • AOI sincronizados</span>
           </div>
         </motion.div>
 
         {globalError && <div className="global-error">{globalError}</div>}
 
-        <div className="grid-map-series">
+        <div className="map-series-grid">
           <Section
             title="Mapa del área de estudio"
             icon={<MapIcon />}
