@@ -161,6 +161,8 @@ def get_aoi() -> AOIGeometry:
         "type": "Polygon",
         # AOI_COORDS already follow the GeoJSON convention [lon, lat]
         "coordinates": [data_collector.AOI_COORDS],
+        "coordinates": [[list(reversed(coord)) for coord in data_collector.AOI_COORDS]],
+
     }
     return AOIGeometry(geometry=polygon)
 
