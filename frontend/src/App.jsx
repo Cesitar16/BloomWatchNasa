@@ -1,11 +1,16 @@
 import { useMemo, useState } from 'react';
 import MapView from './components/MapView.jsx';
-import SummaryCards from './components/SummaryCards.jsx';
 import BloomChart from './components/BloomChart.jsx';
 import CorrelationChart from './components/CorrelationChart.jsx';
 import DataTable from './components/DataTable.jsx';
 import PlotGallery from './components/PlotGallery.jsx';
 import PredictionPanel from './components/PredictionPanel.jsx';
+import DashboardHeader from './components/layout/DashboardHeader.jsx';
+import DashboardFooter from './components/layout/DashboardFooter.jsx';
+import DashboardSection from './components/layout/DashboardSection.jsx';
+import HeroPanel from './components/HeroPanel.jsx';
+import StatCard from './components/StatCard.jsx';
+import MenuActions from './components/MenuActions.jsx';
 import { requestPlot, triggerAnalysis, useApiData } from './hooks/useApi.js';
 
 const plotOptions = [
@@ -17,12 +22,12 @@ const plotOptions = [
 
 export default function App() {
   const { data: aoi } = useApiData('/aoi');
-  const { data: datasets, refetch: refetchDatasets } = useApiData('/datasets');
+  const { data: datasets, loading: loadingDatasets, refetch: refetchDatasets } = useApiData('/datasets');
   const { data: timeseries, loading: loadingTs, refetch: refetchTs } = useApiData('/timeseries');
   const { data: bloom, loading: loadingBloom, refetch: refetchBloom } = useApiData('/analysis/bloom');
   const { data: correlation, loading: loadingCorr, refetch: refetchCorr } = useApiData('/analysis/correlation');
   const { data: predictions, loading: loadingPredictions, refetch: refetchPredictions } = useApiData('/predictions/bloom');
-  const { data: menuOptions, loading: loadingMenu, error: menuError } = useApiData('/menu');
+  const { data: menuOptions, loading: loadingMenu, error: menuError, refetch: refetchMenu } = useApiData('/menu');
   const { data: plots, loading: loadingPlots, refetch: refetchPlots } = useApiData('/plots');
 
   const [runningBloom, setRunningBloom] = useState(false);
@@ -41,6 +46,83 @@ export default function App() {
       Filas: item.rows ?? '—'
     }));
   }, [datasets]);
+
+  const heroStats = useMemo(() => {
+    const latest = bloom?.[bloom.length - 1];
+    const durations = bloom?.map((d) => d.duration_days).filter((value) => typeof value === 'number') ?? [];
+    const avgDuration = durations.length ? Math.round(durations.reduce((acc, cur) => acc + cur, 0) / durations.length) : null;
+
+    const sortedTimeseries = timeseries ? [...timeseries].sort((a, b) => new Date(a.date) - new Date(b.date)) : [];
+    const lastYear = sortedTimeseries.slice(-12);
+    const prevYear = sortedTimeseries.slice(-24, -12);
+
+    const average = (arr, key) => {
+      if (!arr.length) return null;
+      const values = arr.map((item) => item[key]).filter((value) => typeof value === 'number');
+      if (!values.length) return null;
+      return values.reduce((acc, cur) => acc + cur, 0) / values.length;
+    };
+
+    const recentNdvi = average(lastYear, 'ndvi');
+    const previousNdvi = average(prevYear, 'ndvi');
+    const ndviDelta =
+      recentNdvi != null && previousNdvi != null && previousNdvi !== 0
+        ? ((recentNdvi - previousNdvi) / previousNdvi) * 100
+        : null;
+
+    const precipitation = average(lastYear, 'precipitation_mm');
+
+    return [
+      {
+        label: 'Inicio reciente',
+        card: (
+          <StatCard
+            icon={<span aria-hidden="true">📅</span>}
+            label="Inicio reciente"
+            value={latest?.bloom_start ?? '—'}
+            hint={latest?.bloom_end ? `Fin ${latest.bloom_end}` : undefined}
+            tone="emerald"
+          />
+        )
+      },
+      {
+        label: 'Duración promedio',
+        card: (
+          <StatCard
+            icon={<span aria-hidden="true">⏱️</span>}
+            label="Duración promedio"
+            value={avgDuration != null ? `${avgDuration} días` : '—'}
+            hint={latest?.duration_days ? `Último ciclo: ${latest.duration_days} días` : undefined}
+            tone="sky"
+          />
+        )
+      },
+      {
+        label: 'Δ NDVI interanual',
+        card: (
+          <StatCard
+            icon={<span aria-hidden="true">🌿</span>}
+            label="Δ NDVI interanual"
+            value={ndviDelta != null ? `${ndviDelta >= 0 ? '+' : ''}${ndviDelta.toFixed(1)}%` : '—'}
+            hint="Comparación últimos 12 meses"
+            tone="emerald"
+          />
+        )
+      },
+      {
+        label: 'Precipitación típica',
+        card: (
+          <StatCard
+            icon={<span aria-hidden="true">💧</span>}
+            label="Precipitación típica"
+            value={precipitation != null ? `${Math.round(precipitation)} mm/mes` : '—'}
+            hint="Promedio móvil anual"
+            tone="slate"
+          />
+        )
+      }
+    ];
+  }, [bloom, timeseries]);
 
   const menuErrorMessage = menuError?.response?.data?.detail ?? menuError?.message;
   const requiresYear = plotType === 'ndvi_year' || plotType === 'ndvi_rain_year';
@@ -103,57 +185,107 @@ export default function App() {
     }
   };
 
+  const systemStatus = {
+    title: loadingBloom || loadingTs || loadingCorr ? 'Sincronizando' : 'Listo',
+    hint: loadingBloom || loadingTs || loadingCorr ? 'Actualizando cálculos y series.' : 'NDVI · Lluvia · AOI sincronizados'
+  };
+
   return (
-    <div className="app-shell">
-      <header>
-        <h1>BloomWatch Dashboard</h1>
-        <p>Monitorea la floración y la relación con precipitaciones usando los procesamientos existentes.</p>
-      </header>
-      <main>
-        <section className="card" style={{ gridColumn: '1 / -1' }}>
-          <h2>Área de estudio</h2>
-          <MapView geometry={aoi} />
-        </section>
+    <div className="dashboard-shell">
+      <DashboardHeader />
 
-        <section className="card">
-          <h2>Resumen de floración</h2>
-          {loadingBloom ? <p className="status">Consultando resultados...</p> : <SummaryCards bloomData={bloom} />}
-          <div className="status" style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <button onClick={() => handleBloom('global')} disabled={runningBloom}>
-              {runningBloom ? 'Procesando…' : 'Recalcular (umbral global)'}
-            </button>
-            <button onClick={() => handleBloom('annual')} disabled={runningBloom}>
-              {runningBloom ? 'Procesando…' : 'Recalcular (umbral anual)'}
-            </button>
-            <button onClick={refetchBloom} disabled={loadingBloom}>Actualizar</button>
-          </div>
-        </section>
+      <main className="dashboard-main">
+        <HeroPanel
+          stats={heroStats}
+          description="Explora tendencias NDVI, precipitación y ventanas de floración calculadas con los procesos actuales."
+          systemStatus={systemStatus}
+          onRunGlobal={() => handleBloom('global')}
+          onRunAnnual={() => handleBloom('annual')}
+          onRefresh={refetchBloom}
+          running={runningBloom}
+          loading={loadingBloom}
+        />
 
-        <section className="card">
-          <h2>Conjuntos de datos disponibles</h2>
-          {datasets ? <DataTable rows={datasetRows} /> : <p className="status">Revisando archivos…</p>}
-          <button onClick={refetchDatasets} style={{ marginTop: '1rem' }}>
-            Actualizar listado
-          </button>
-        </section>
+        <div className="dashboard-grid">
+          <DashboardSection
+            title="Mapa del área de estudio"
+            subtitle="Vista general del polígono AOI"
+            icon={<span className="icon-circle" aria-hidden="true">🗺️</span>}
+          >
+            <MapView geometry={aoi} />
+          </DashboardSection>
 
-        <section className="card" style={{ gridColumn: '1 / -1' }}>
-          <h2>Series NDVI &amp; precipitación</h2>
-          {loadingTs ? <p className="status">Cargando serie temporal…</p> : <BloomChart timeseries={timeseries} />}
-          <button onClick={refetchTs} style={{ marginTop: '1rem' }}>Actualizar serie</button>
-        </section>
+          <DashboardSection
+            title="NDVI vs precipitación"
+            subtitle="Series temporales normalizadas"
+            icon={<span className="icon-circle" aria-hidden="true">📈</span>}
+            actions={(
+              <div className="section-actions">
+                <button type="button" onClick={refetchTs} disabled={loadingTs}>
+                  {loadingTs ? 'Actualizando…' : 'Actualizar serie'}
+                </button>
+              </div>
+            )}
+          >
+            {loadingTs ? <p className="status">Cargando serie temporal…</p> : <BloomChart timeseries={timeseries} />}
+          </DashboardSection>
+        </div>
 
-        <section className="card" style={{ gridColumn: '1 / -1' }}>
-          <h2>Predicción de floraciones próximas</h2>
+        <DashboardSection
+          title="Panel de predicción"
+          subtitle="Métricas de clasificación y pronóstico NDVI"
+          icon={<span className="icon-circle" aria-hidden="true">🎯</span>}
+          fullWidth
+        >
           <PredictionPanel data={predictions} loading={loadingPredictions} onRefresh={refetchPredictions} />
-        </section>
+        </DashboardSection>
 
-        <section className="card" style={{ gridColumn: '1 / -1' }}>
-          <h2>Gráficos generados desde src/visualization.py</h2>
+        <DashboardSection
+          title="Correlación lluvia → NDVI"
+          subtitle="Coeficiente de Pearson por rezago"
+          icon={<span className="icon-circle" aria-hidden="true">🌧️</span>}
+          actions={(
+            <div className="section-actions">
+              <button type="button" onClick={handleCorrelation} disabled={runningCorr}>
+                {runningCorr ? 'Procesando…' : 'Recalcular'}
+              </button>
+              <button type="button" className="button--ghost" onClick={refetchCorr} disabled={loadingCorr}>
+                {loadingCorr ? 'Actualizando…' : 'Actualizar'}
+              </button>
+            </div>
+          )}
+        >
+          {loadingCorr ? <p className="status">Calculando…</p> : <CorrelationChart data={correlation} />}
+        </DashboardSection>
+
+        <DashboardSection
+          title="Conjuntos de datos disponibles"
+          subtitle="Resumen de archivos procesados"
+          icon={<span className="icon-circle" aria-hidden="true">🗂️</span>}
+          actions={(
+            <button type="button" className="button--ghost" onClick={refetchDatasets} disabled={loadingDatasets}>
+              {loadingDatasets ? 'Actualizando…' : 'Actualizar listado'}
+            </button>
+          )}
+        >
+          {loadingDatasets && !datasets ? <p className="status">Revisando archivos…</p> : <DataTable rows={datasetRows} />}
+        </DashboardSection>
+
+        <DashboardSection
+          title="Gráficos generados"
+          subtitle="Solicitudes a src/visualization.py"
+          icon={<span className="icon-circle" aria-hidden="true">🖼️</span>}
+          fullWidth
+          actions={(
+            <button type="button" className="button--ghost" onClick={refetchPlots} disabled={loadingPlots}>
+              {loadingPlots ? 'Actualizando…' : 'Actualizar listado'}
+            </button>
+          )}
+        >
           <form className="plot-controls" onSubmit={handleGeneratePlot}>
-            <label>
+            <label htmlFor="plot-type">
               Tipo de gráfico
-              <select value={plotType} onChange={handlePlotTypeChange}>
+              <select id="plot-type" value={plotType} onChange={handlePlotTypeChange}>
                 {plotOptions.map((option) => (
                   <option value={option.value} key={option.value}>
                     {option.label}
@@ -162,9 +294,10 @@ export default function App() {
               </select>
             </label>
             {requiresYear ? (
-              <label>
+              <label htmlFor="plot-year">
                 Año
                 <input
+                  id="plot-year"
                   type="number"
                   min="2000"
                   max="2100"
@@ -177,65 +310,31 @@ export default function App() {
               <button type="submit" disabled={runningPlot}>
                 {runningPlot ? 'Generando…' : 'Generar gráfico'}
               </button>
-              <button type="button" onClick={refetchPlots} disabled={loadingPlots}>
-                {loadingPlots ? 'Actualizando…' : 'Actualizar listado'}
-              </button>
             </div>
           </form>
-          {loadingPlots ? (
-            <p className="status">Revisando gráficos disponibles…</p>
-          ) : (
-            <PlotGallery plots={plots} />
-          )}
-        </section>
+          {loadingPlots ? <p className="status">Revisando gráficos disponibles…</p> : <PlotGallery plots={plots} />}
+        </DashboardSection>
 
-        <section className="card" style={{ gridColumn: '1 / -1' }}>
-          <h2>Opciones del menú CLI reutilizadas</h2>
-          {loadingMenu ? (
-            <p className="status">Consultando menú…</p>
-          ) : menuError ? (
-            <p className="error">No se pudo cargar el menú ({menuErrorMessage}).</p>
-          ) : (
-            <ul className="menu-list">
-              {menuOptions?.map((option) => (
-                <li key={option.key}>
-                  <div className="menu-item-head">
-                    <span className="menu-key">{option.key})</span>
-                    <span className="menu-label">{option.label}</span>
-                  </div>
-                  <p>{option.description}</p>
-                  {option.parameters?.length ? (
-                    <ul className="menu-params">
-                      {option.parameters.map((param) => (
-                        <li key={param.name}>
-                          <code>{param.name}</code>
-                          <span>{param.required ? ' (requerido)' : ' (opcional)'} – {param.description}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+        <DashboardSection
+          title="Acciones rápidas (CLI)"
+          subtitle="Comandos disponibles reutilizados desde el backend"
+          icon={<span className="icon-circle" aria-hidden="true">⚙️</span>}
+          fullWidth
+        >
+          <MenuActions menu={menuOptions} loading={loadingMenu} error={menuErrorMessage} onRefresh={refetchMenu} />
+        </DashboardSection>
 
-        <section className="card">
-          <h2>Correlación lluvia → NDVI</h2>
-          {loadingCorr ? <p className="status">Calculando…</p> : <CorrelationChart data={correlation} />}
-          <div className="status" style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <button onClick={handleCorrelation} disabled={runningCorr}>
-              {runningCorr ? 'Procesando…' : 'Recalcular correlación'}
-            </button>
-            <button onClick={refetchCorr} disabled={loadingCorr}>Actualizar</button>
-          </div>
-        </section>
-
-        <section className="card" style={{ gridColumn: '1 / -1' }}>
-          <h2>Mensajes</h2>
-          {error ? <p className="error">{error}</p> : <p className="status">Todo listo para analizar.</p>}
-        </section>
+        <DashboardSection
+          title="Mensajes"
+          subtitle="Estatus general del dashboard"
+          icon={<span className="icon-circle" aria-hidden="true">ℹ️</span>}
+          fullWidth
+        >
+          {error ? <p className="status status--error">{error}</p> : <p className="status">Todo listo para analizar.</p>}
+        </DashboardSection>
       </main>
+
+      <DashboardFooter />
     </div>
   );
 }
